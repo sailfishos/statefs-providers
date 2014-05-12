@@ -262,7 +262,8 @@ static const status_array_type ofono_status_ = {{
     , "searching", "denied", "unknown", "roaming"
     }};
 
-static const std::bitset<size_t(Status::EOE)> status_registered_("0010001");
+// read in big endian
+static const std::bitset<size_t(Status::EOE)> status_registered_("1000100");
 
 static const std::map<QString, QString> sim_props_map_ = {
     { "MobileCountryCode", "HomeMCC" }
