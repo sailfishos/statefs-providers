@@ -590,7 +590,6 @@ void Bridge::init()
             return;
 
         using namespace std::placeholders;
-        find_process_object(modems, std::bind(&Bridge::setup_modem, this, _1, _2));
         connect(manager_.get(), &Manager::ModemAdded
                 , [this](QDBusObjectPath const &n, QVariantMap const&p) {
                     setup_modem(n.path(), p);
@@ -600,6 +599,7 @@ void Bridge::init()
                     if (n.path() == modem_path_)
                         reset_modem();
                 });
+        find_process_object(modems, std::bind(&Bridge::setup_modem, this, _1, _2));
     };
     auto reset_manager = [this]() {
         qDebug() << "Ofono is unregistered, cleaning up";
@@ -660,6 +660,10 @@ void Bridge::setup_stk(QString const &path)
     };
 
     stk_.reset(new SimToolkit(service_name, path, bus_));
+    connect(stk_.get(), &SimToolkit::PropertyChanged
+            , [update](QString const &n, QDBusVariant const &v) {
+                update(n, v.variant());
+            });
     auto res = sync(stk_->GetProperties());
     if (res.isError()) {
         qWarning() << "SimToolkit GetProperties error:" << res.error();
@@ -669,16 +673,6 @@ void Bridge::setup_stk(QString const &path)
     auto props = res.value();
     for (auto it = props.begin(); it != props.end(); ++it)
         update(it.key(), it.value());
-
-    if (!stk_) {
-        qDebug() << "No SimToolkit interface";
-        return;
-    }
-    DBG() << "Connect SimToolkit::PropertyChanged";
-    connect(stk_.get(), &SimToolkit::PropertyChanged
-            , [update](QString const &n, QDBusVariant const &v) {
-                update(n, v.variant());
-            });
 }
 
 void Bridge::reset_connectionManager()
@@ -782,11 +776,11 @@ void Bridge::setup_sim(QString const &path)
         DBG() << "Sim prop: " << n << "=" << v;
         if (n == "Present") {
             has_sim_ = v.toBool();
+            qDebug() << "Ofono: sim is " << (has_sim_ ? "present" : "absent");
             if (has_sim_) {
                 if (!network_)
                     set_status(Status::Offline);
             } else {
-                qDebug() << "Ofono: sim is not present";
                 set_status(Status::NoSim);
             }
         } else {
@@ -796,6 +790,11 @@ void Bridge::setup_sim(QString const &path)
         }
     };
     sim_.reset(new SimManager(service_name, path, bus_));
+    connect(sim_.get(), &SimManager::PropertyChanged
+            , [update](QString const &n, QDBusVariant const &v) {
+                update(n, v.variant());
+            });
+
     auto res = sync(sim_->GetProperties());
     if (res.isError()) {
         qWarning() << "Sim GetProperties error:" << res.error();
@@ -805,15 +804,8 @@ void Bridge::setup_sim(QString const &path)
     for (auto it = props.begin(); it != props.end(); ++it)
         update(it.key(), it.value());
 
-    if (sim_) {
-        connect(sim_.get(), &SimManager::PropertyChanged
-                , [update](QString const &n, QDBusVariant const &v) {
-                    update(n, v.variant());
-                });
-
-        if (is_set(interfaces_, Interface::SimToolkit))
-            setup_stk(modem_path_);
-    }
+    if (is_set(interfaces_, Interface::SimToolkit))
+        setup_stk(modem_path_);
 }
 
 void MainNs::resetProperties(MainNs::Properties what)
