@@ -810,14 +810,16 @@ void Bridge::enumerate_operators()
         qWarning() << "Can't enumerate operators, network is null";
         return;
     }
-    auto ops = sync(network_->GetOperators());
-    if (ops.isError()) {
-        qWarning() << "Network GetOperators error:" << ops.error();
-        return;
-    }
-    using namespace std::placeholders;
-    auto process = std::bind(&Bridge::setup_operator, this, _1, _2);
-    find_process_object(ops, process);
+    auto process_operators = [this](PathPropertiesArray const &ops) {
+        if (!network_) {
+            qDebug() << "network is null, skip operators";
+            return;
+        }
+        using namespace std::placeholders;
+        auto process = std::bind(&Bridge::setup_operator, this, _1, _2);
+        find_process_object(ops, process);
+    };
+    async(this, network_->GetOperators(), process_operators);
 }
 
 void Bridge::setup_sim(QString const &path)
