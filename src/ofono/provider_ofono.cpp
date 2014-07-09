@@ -476,6 +476,7 @@ void Bridge::reset_sim()
     qDebug() << "Reset sim properties";
     sim_present_ = SimPresent::Unknown;
     sim_.reset();
+    interfaces_.reset((size_t)Interface::SimManager);
     reset_props();
 }
 
@@ -484,6 +485,7 @@ void Bridge::reset_network()
     qDebug() << "Reset cellular network properties";
     operator_.reset();
     network_.reset();
+    interfaces_.reset((size_t)Interface::NetworkRegistration);
     reset_props();
 }
 
@@ -491,6 +493,7 @@ void Bridge::reset_stk()
 {
     qDebug() << "Reset sim toolkit properties";
     stk_.reset();
+    interfaces_.reset((size_t)Interface::SimToolkit);
     updateProperty("StkIdleModeText", "");
 }
 
@@ -730,6 +733,7 @@ void Bridge::reset_connectionManager()
 {
     qDebug() << "Reset connection manager";
     connectionManager_.reset();
+    interfaces_.reset((size_t)Interface::ConnectionManager);
     connectionContexts_.clear();
     update_mms_context();
 }
