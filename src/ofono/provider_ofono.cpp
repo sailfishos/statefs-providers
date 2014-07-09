@@ -686,18 +686,16 @@ void Bridge::setup_network(QString const &path)
                 update(n, v.variant());
             });
 
-    auto res = sync(network_->GetProperties());
-    if (res.isError()) {
-        qWarning() << "Network GetProperties error:" << res.error();
-        return;
-    }
-
-    auto props = res.value();
-    for (auto it = props.begin(); it != props.end(); ++it)
-        update(it.key(), it.value());
-
-    if (!network_)
-        qDebug() << "No network interface";
+    auto process_props = [this, update](QVariantMap const &props) {
+        if (!network_) {
+            qDebug() << "Network is reset, do not process props";
+            return;
+        }
+        for (auto it = props.begin(); it != props.end(); ++it)
+            update(it.key(), it.value());
+        enumerate_operators();
+    };
+    async(this, network_->GetProperties(), process_props);
 }
 
 void Bridge::setup_stk(QString const &path)
