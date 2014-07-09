@@ -4,8 +4,7 @@
  * Properties translation from ofono values is performed in
  * contextkit-compatible way.
  *
- * Copyright (C) 2013 Jolla Ltd.
- * Contact: Denis Zalevskiy <denis.zalevskiy@jollamobile.com>
+ * Copyright (C) 2013, 2014 Jolla Ltd.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -149,6 +148,20 @@ static interfaces_set_type get_interfaces(QStringList const &from)
     return res;
 }
 
+static char const * sim_presence_name(SimPresent v)
+{
+    switch(v) {
+    case SimPresent::Yes:
+        return "present";
+        break;
+    case SimPresent::No:
+        return "absent";
+        break;
+    default:
+        return "";
+    }
+}
+
 enum class State { UnchangedSet, UnchangedReset, Set, Reset };
 
 static inline bool is_set(State s)
@@ -221,7 +234,7 @@ typedef Bridge::Status Status;
 QDebug & operator << (QDebug &dst, Status src)
 {
     static const char *names[] = {
-        "NoSim", "Offline", "Registered", "Searching"
+        "Offline", "Registered", "Searching"
         , "Denied", "Unknown", "Roaming"
     };
     static_assert(sizeof(names)/sizeof(names[0]) == size_t(Status::EOE)
@@ -252,15 +265,39 @@ static const status_map_type status_map_ = {
     , {"roaming", Status::Roaming}
 };
 
-static const status_array_type ckit_status_ = {{
-    "no-sim", "offline", "home"
-    , "offline", "forbidden", "offline", "roam"
-    }};
+Status Bridge::map_status(QString const &name)
+{
+    auto it = status_map_.find(name);
+    return (it != status_map_.end()) ? it->second : Status::Offline;
+}
 
-static const status_array_type ofono_status_ = {{
-    "unregistered", "unregistered", "registered"
-    , "searching", "denied", "unknown", "roaming"
-    }};
+QString const & Bridge::ckit_status(Status status, SimPresent sim)
+{
+    static const QString names[] = {
+        "offline", "home"
+        , "offline", "forbidden", "offline", "roam"
+    };
+    static const QString no_sim("no-sim");
+
+    static_assert(sizeof(names)/sizeof(names[0]) == size_t(Status::EOE)
+                  , "Check Status values names");
+
+    return (sim == SimPresent::Yes
+            ? names[static_cast<size_t>(status)]
+            : no_sim);
+}
+
+QString const & Bridge::ofono_status(Status status)
+{
+    static const QString names[] = {
+            "unregistered", "registered"
+            , "searching", "denied", "unknown", "roaming"
+        };
+    static_assert(sizeof(names)/sizeof(names[0]) == size_t(Status::EOE)
+                  , "Check Status values names");
+
+    return names[static_cast<size_t>(status)];
+}
 
 // read in big endian
 static const std::bitset<size_t(Status::EOE)> status_registered_("1000100");
@@ -330,7 +367,7 @@ Bridge::Bridge(MainNs *ns, QDBusConnection &bus)
     : PropertiesSource(ns)
     , bus_(bus)
     , watch_(bus, service_name)
-    , has_sim_(false)
+    , sim_present_(SimPresent::Unknown)
     , status_(Status::Unknown)
     , network_name_{"", ""}
     , set_name_(&Bridge::set_name_home)
@@ -367,25 +404,12 @@ void Bridge::set_name_roaming()
     updateProperty("ExtendedNetworkName", name);
 }
 
-Status Bridge::map_status(QString const &name)
-{
-    auto it = status_map_.find(name);
-    return (it != status_map_.end()) ? it->second : Status::Offline;
-}
-
 void Bridge::set_status(Status new_status)
 {
     if (new_status == status_)
         return;
 
-    qDebug() << "Cellular status " << status_ << "->" << new_status;
-    if (!has_sim_ && new_status != Status::NoSim) {
-        qWarning() << "No sim, should network properties be processed?";
-        set_status(Status::NoSim);
-        return;
-    }
-    if (new_status == Status::NoSim)
-        has_sim_ = false;
+    qDebug() << "Cellular status" << status_ << "->" << new_status;
 
     auto expected = (new_status == Status::Roaming
                      ? &Bridge::set_name_roaming
@@ -394,13 +418,11 @@ void Bridge::set_status(Status new_status)
     if (expected != set_name_)
         set_name_ = expected;
 
-    auto is_registered = is_set(status_registered_, new_status)
-        , was_registered = is_set(status_registered_, status_);
+    auto is_registered = is_set(status_registered_, new_status);
+    auto was_registered = is_set(status_registered_, status_);
     auto is_changed = (was_registered != is_registered);
 
-    auto inew = static_cast<size_t>(new_status);
-
-    updateProperty("RegistrationStatus", ckit_status_[inew]);
+    updateProperty("RegistrationStatus", ckit_status(new_status, sim_present_));
 
     status_ = new_status;
     if (is_changed) {
@@ -433,23 +455,28 @@ void Bridge::update_mms_context()
     DBG() << "updated MMS context" << mmsContext_;
 }
 
+void Bridge::reset_props()
+{
+    static const auto status = Status::Offline;
+    set_status(status);
+    static_cast<MainNs*>(target_)->resetProperties(status, sim_present_);
+}
+
 void Bridge::reset_modem()
 {
     qDebug() << "Reset modem properties";
     modem_path_ = "";
     modem_.reset();
     reset_connectionManager();
-    reset_sim();
+    reset_props();
 }
 
 void Bridge::reset_sim()
 {
     qDebug() << "Reset sim properties";
-    operator_.reset();
-    network_.reset();
+    sim_present_ = SimPresent::Unknown;
     sim_.reset();
-    set_status(Status::NoSim);
-    static_cast<MainNs*>(target_)->resetProperties(MainNs::NoSimDefault);
+    reset_props();
 }
 
 void Bridge::reset_network()
@@ -457,9 +484,7 @@ void Bridge::reset_network()
     qDebug() << "Reset cellular network properties";
     operator_.reset();
     network_.reset();
-    set_status(Status::Offline);
-    auto prop_set = has_sim_ ? MainNs::Default : MainNs::NoSimDefault;
-    static_cast<MainNs*>(target_)->resetProperties(prop_set);
+    reset_props();
 }
 
 void Bridge::reset_stk()
@@ -485,6 +510,7 @@ void Bridge::process_interfaces(QStringList const &v)
     auto sim_state = state(Interface::SimManager);
     if (sim_state == State::Reset) {
         if (sim_) {
+            qDebug() << "SimManager is gone";
             reset_sim();
             return;
         }
@@ -527,8 +553,10 @@ bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
         if (n == "Interfaces")
             process_interfaces(v.toStringList());
         else if (n == "Powered") {
-            if (!v.toBool() && !sim_)
-                reset_sim();
+            auto is_powered = v.toBool();
+            qDebug() << "Modem power is" << (is_powered ? "on" : "off");
+            if (!is_powered)
+                reset_props();
         }
     };
 
@@ -544,6 +572,26 @@ bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
     return true;
 }
 
+void Bridge::set_sim_presence(SimPresent v)
+{
+    if (v == sim_present_)
+        return;
+
+    sim_present_ = v;
+    if (sim_present_ == SimPresent::No) {
+        qDebug() << "Ofono: no sim";
+        set_status(Status::Offline);
+    } else if (sim_present_ == SimPresent::Yes) {
+        qDebug() << "Ofono: sim is present";
+        if (!network_)
+            set_status(Status::Offline);
+        else if (!modem_path_.isEmpty())
+            setup_network(modem_path_);
+    }
+    updateProperty("Sim", sim_presence_name(v));
+}
+
+
 bool Bridge::setup_operator(QString const &path, QVariantMap const &props)
 {
     qDebug() << "Operator " << props["Name"];
@@ -555,10 +603,9 @@ bool Bridge::setup_operator(QString const &path, QVariantMap const &props)
 
     auto update = [this](QString const &n, QVariant const &v) {
         DBG() << "Operator prop: " << n << "=" << v;
-        if (!sim_) {
-            DBG() << "No sim, reset network";
-            reset_network();
-        }
+        if (sim_present_ == SimPresent::No)
+            qDebug() << "No sim, operator property" << n << "->" << v;
+
         map_exec(operator_property_actions_, n, this, v);
     };
 
@@ -603,8 +650,15 @@ void Bridge::init()
     };
     auto reset_manager = [this]() {
         qDebug() << "Ofono is unregistered, cleaning up";
+        network_.reset();
+        operator_.reset();
+        stk_.reset();
+        sim_.reset();
+        sim_present_ = SimPresent::Unknown;
+        modem_.reset();
         manager_.reset();
-        static_cast<MainNs*>(target_)->resetProperties(MainNs::Default);
+        interfaces_.reset();
+        reset_props();
     };
     watch_.init(connect_manager, reset_manager);
     connect_manager();
@@ -615,10 +669,9 @@ void Bridge::setup_network(QString const &path)
     qDebug() << "Get cellular network properties";
     auto update = [this](QString const &n, QVariant const &v) {
         DBG() << "Network: prop" << n << "=" << v;
-        if (!has_sim_) {
-            DBG() << "No sim, reset network";
-            reset_network();
-        }
+        if (sim_present_ == SimPresent::No)
+            qDebug() << "No sim, network prop" << n << "->" << v;
+
         map_exec(net_property_actions_, n, this, v);
     };
 
@@ -649,14 +702,11 @@ void Bridge::setup_stk(QString const &path)
     qDebug() << "Get SimToolkit properties";
     auto update = [this](QString const &n, QVariant const &v) {
         DBG() << "SimToolkit: prop" << n << "=" << v;
-        if (!has_sim_) {
-            DBG() << "No sim, reset SimToolkit";
-            reset_stk();
-        } else {
-            auto it = stk_props_map_.find(n);
-            if (it != stk_props_map_.end())
-                updateProperty(it->second, v);
-        }
+        if (sim_present_ == SimPresent::No)
+            DBG() << "No sim, SimToolkit prop" << n << "->" << v;
+        auto it = stk_props_map_.find(n);
+        if (it != stk_props_map_.end())
+            updateProperty(it->second, v);
     };
 
     stk_.reset(new SimToolkit(service_name, path, bus_));
@@ -775,14 +825,7 @@ void Bridge::setup_sim(QString const &path)
     auto update = [this](QString const &n, QVariant const &v) {
         DBG() << "Sim prop: " << n << "=" << v;
         if (n == "Present") {
-            has_sim_ = v.toBool();
-            qDebug() << "Ofono: sim is " << (has_sim_ ? "present" : "absent");
-            if (has_sim_) {
-                if (!network_)
-                    set_status(Status::Offline);
-            } else {
-                set_status(Status::NoSim);
-            }
+            set_sim_presence(v.toBool() ? SimPresent::Yes : SimPresent::No);
         } else {
             auto it = sim_props_map_.find(n);
             if (it != sim_props_map_.end())
@@ -808,11 +851,12 @@ void Bridge::setup_sim(QString const &path)
         setup_stk(modem_path_);
 }
 
-void MainNs::resetProperties(MainNs::Properties what)
+void MainNs::resetProperties(Bridge::Status status, SimPresent sim)
 {
+    qDebug() << "Reset properties";
     setProperties(defaults_);
-    if (what == NoSimDefault)
-        updateProperty("RegistrationStatus", "no-sim");
+    updateProperty("RegistrationStatus", Bridge::ckit_status(status, sim));
+    updateProperty("Sim", sim_presence_name(sim));
 }
 
 // TODO 2 contexkit properties are not supported yet:
@@ -826,7 +870,7 @@ MainNs::MainNs(QDBusConnection &bus)
     , defaults_({
             { "SignalStrength", "0"}
             , { "DataTechnology", "unknown"}
-            , { "RegistrationStatus", "offline"} // contextkit
+            // "RegistrationStatus" is set separately
             , { "Status", "unregistered"} // ofono
             , { "Technology", "unknown"}
             , { "SignalBars", "0"}
@@ -842,6 +886,12 @@ MainNs::MainNs(QDBusConnection &bus)
             , { "DataRoamingAllowed", "0"}
         })
 {
+    // contextkit prop
+    static auto const sim = SimPresent::Unknown;
+    auto status = Bridge::ckit_status(Status::Offline, sim);
+    addProperty("RegistrationStatus", status.toUtf8());
+    addProperty("Sim", sim_presence_name(sim));
+
     for (auto v : defaults_)
         addProperty(v.first, v.second);
     src_->init();
