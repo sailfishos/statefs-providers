@@ -578,6 +578,7 @@ void Bridge::set_sim_presence(SimPresent v)
         return;
 
     sim_present_ = v;
+    updateProperty("Sim", sim_presence_name(v));
     if (sim_present_ == SimPresent::No) {
         qDebug() << "Ofono: no sim";
         set_status(Status::Offline);
@@ -588,7 +589,6 @@ void Bridge::set_sim_presence(SimPresent v)
         else if (!modem_path_.isEmpty())
             setup_network(modem_path_);
     }
-    updateProperty("Sim", sim_presence_name(v));
 }
 
 
