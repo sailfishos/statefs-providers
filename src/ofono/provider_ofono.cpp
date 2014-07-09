@@ -624,14 +624,11 @@ void Bridge::init()
 {
     qDebug() << "Establish connection with ofono";
 
-    auto connect_manager = [this]() {
-        manager_.reset(new Manager(service_name, "/", bus_));
-        auto res = sync(manager_->GetModems());
-        if (res.isError()) {
-            qWarning() << "GetModems error:" << res.error();
+    auto process_modems = [this](PathPropertiesArray const &modems) {
+        if (!manager_) {
+            qDebug() << "Manager is reset, do not enumerate modems";
             return;
         }
-        auto modems = res.value();
         qDebug() << "There is(are) " << modems.size() << " modems";
         if (!modems.size())
             return;
@@ -648,6 +645,12 @@ void Bridge::init()
                 });
         find_process_object(modems, std::bind(&Bridge::setup_modem, this, _1, _2));
     };
+
+    auto connect_manager = [this, process_modems]() {
+        manager_.reset(new Manager(service_name, "/", bus_));
+        async(this, manager_->GetModems(), process_modems);
+    };
+
     auto reset_manager = [this]() {
         qDebug() << "Ofono is unregistered, cleaning up";
         network_.reset();
