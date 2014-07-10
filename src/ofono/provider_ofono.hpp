@@ -1,5 +1,11 @@
 #ifndef _STATEFS_PRIVATE_CONNMAN_HPP_
 #define _STATEFS_PRIVATE_CONNMAN_HPP_
+/**
+ * @file provider_ofono.hpp
+ * @brief Statefs ofono provider
+ * @copyright (C) 2013, 2014 Jolla Ltd.
+ * @par License: LGPL 2.1 http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+ */
 
 #include "manager_interface.h"
 #include "net_interface.h"
@@ -61,6 +67,8 @@ enum class Interface {
     EOE
 };
 
+enum class SimPresent { Unknown, No, Yes, EOE };
+
 struct ConnectionCache
 {
     std::unique_ptr<ConnectionContext> context;
@@ -85,17 +93,20 @@ public:
     typedef std::map<QString, property_action_type> property_map_type;
 
     enum class Status {
-        NoSim, Offline, Registered, Searching, Denied, Unknown, Roaming
+        Offline, Registered, Searching, Denied, Unknown, Roaming
             , EOE
             };
 
     void set_status(Status);
-    Status map_status(QString const&);
     void set_network_name(QVariant const &);
     void set_operator_name(QVariant const &);
     void set_name_home();
     void set_name_roaming();
     void update_mms_context();
+
+    static Status map_status(QString const&);
+    static QString const & ckit_status(Status, SimPresent);
+    static QString const & ofono_status(Status status);
 
 private:
 
@@ -110,8 +121,10 @@ private:
     void reset_modem();
     void reset_stk();
     void reset_connectionManager();
+    void reset_props();
     void process_interfaces(QStringList const&);
     void enumerate_operators();
+    void set_sim_presence(SimPresent);
 
     QDBusConnection &bus_;
     interfaces_set_type interfaces_;
@@ -125,7 +138,7 @@ private:
     std::map<QString,ConnectionCache> connectionContexts_;
     ServiceWatch watch_;
 
-    bool has_sim_;
+    SimPresent sim_present_;
     bool supports_stk_;
     Status status_;
     std::pair<QString, QString> network_name_;
@@ -147,11 +160,7 @@ public:
 
 private:
     friend class Bridge;
-    enum Properties {
-        Default,
-        NoSimDefault
-    };
-    void resetProperties(Properties);
+    void resetProperties(Bridge::Status, SimPresent);
 
     statefs::qt::DefaultProperties defaults_;
 };
