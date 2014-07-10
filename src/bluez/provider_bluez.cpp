@@ -32,7 +32,7 @@ namespace statefs { namespace bluez {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
-using statefs::qt::sync;
+using statefs::qt::async;
 
 static char const *service_name = "org.bluez";
 
@@ -50,12 +50,9 @@ void Bridge::init()
         connect(manager_.get(), &Manager::DefaultAdapterChanged
                 , this, &Bridge::defaultAdapterChanged);
 
-        auto getDefault = sync(manager_->DefaultAdapter());
-        if (getDefault.isError()) {
-            qWarning() << "DefaultAdapter error:" << getDefault.error();
-        } else {
-            defaultAdapterChanged(getDefault.value());
-        }
+        async(this, manager_->DefaultAdapter()
+              , std::bind(&Bridge::defaultAdapterChanged, this
+                          , std::placeholders::_1));
     };
     auto reset_manager = [this]() {
         manager_.reset();
@@ -72,23 +69,10 @@ void Bridge::defaultAdapterChanged(const QDBusObjectPath &v)
 
     adapter_.reset(new Adapter(service_name, v.path(), bus_));
 
-    sync(adapter_->GetProperties()
-         , [this](QVariantMap const &v) {
-             setProperties(v);
-         });
-
     connect(adapter_.get(), &Adapter::PropertyChanged
             , [this](const QString &name, const QDBusVariant &value) {
                 updateProperty(name, value.variant());
             });
-
-    sync(adapter_->ListDevices()
-         , [this](const QList<QDBusObjectPath> &devs) {
-            foreach(QDBusObjectPath dev, devs) {
-                addDevice(dev);
-            }
-         });
-
     connect(adapter_.get(), &Adapter::DeviceRemoved
             , [this](const QDBusObjectPath &path) {
                 removeDevice(path);
@@ -97,6 +81,18 @@ void Bridge::defaultAdapterChanged(const QDBusObjectPath &v)
             , [this](const QDBusObjectPath &path) {
                 addDevice(path);
             });
+
+    async(this, adapter_->GetProperties(),
+          [this](QVariantMap const &v) {
+              setProperties(v);
+          });
+
+    async(this, adapter_->ListDevices()
+          , [this](const QList<QDBusObjectPath> &devs) {
+              foreach(QDBusObjectPath dev, devs) {
+                  addDevice(dev);
+              }
+          });
 }
 
 void Bridge::addDevice(const QDBusObjectPath &v)
@@ -104,18 +100,6 @@ void Bridge::addDevice(const QDBusObjectPath &v)
     removeDevice(v);
 
     auto device = cor::make_unique<Device>(service_name, v.path(), bus_);
-
-    sync(device.get()->GetProperties()
-         , [this,v](const QVariantMap &props) {
-            QVariantMap::const_iterator it = props.find("Connected");
-            if (it != props.end()) {
-                if (it.value().toBool())
-                    connected_.insert(v);
-                else
-                    connected_.erase(v);
-                updateProperty("Connected", connected_.size() > 0);
-            }
-         });
 
     connect(device.get(), &Device::PropertyChanged
         , [this,v](const QString &name, const QDBusVariant &value) {
@@ -127,6 +111,18 @@ void Bridge::addDevice(const QDBusObjectPath &v)
                 updateProperty("Connected", connected_.size() > 0);
             }
         });
+
+    async(this, device.get()->GetProperties()
+         , [this,v](const QVariantMap &props) {
+            QVariantMap::const_iterator it = props.find("Connected");
+            if (it != props.end()) {
+                if (it.value().toBool())
+                    connected_.insert(v);
+                else
+                    connected_.erase(v);
+                updateProperty("Connected", connected_.size() > 0);
+            }
+         });
 
     devices_.insert(std::make_pair(v, std::move(device)));
 }
