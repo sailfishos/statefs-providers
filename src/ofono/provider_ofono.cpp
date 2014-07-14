@@ -476,6 +476,7 @@ void Bridge::reset_sim()
     qDebug() << "Reset sim properties";
     sim_present_ = SimPresent::Unknown;
     sim_.reset();
+    interfaces_.reset((size_t)Interface::SimManager);
     reset_props();
 }
 
@@ -484,6 +485,7 @@ void Bridge::reset_network()
     qDebug() << "Reset cellular network properties";
     operator_.reset();
     network_.reset();
+    interfaces_.reset((size_t)Interface::NetworkRegistration);
     reset_props();
 }
 
@@ -491,6 +493,7 @@ void Bridge::reset_stk()
 {
     qDebug() << "Reset sim toolkit properties";
     stk_.reset();
+    interfaces_.reset((size_t)Interface::SimToolkit);
     updateProperty("StkIdleModeText", "");
 }
 
@@ -578,6 +581,7 @@ void Bridge::set_sim_presence(SimPresent v)
         return;
 
     sim_present_ = v;
+    updateProperty("Sim", sim_presence_name(v));
     if (sim_present_ == SimPresent::No) {
         qDebug() << "Ofono: no sim";
         set_status(Status::Offline);
@@ -588,7 +592,6 @@ void Bridge::set_sim_presence(SimPresent v)
         else if (!modem_path_.isEmpty())
             setup_network(modem_path_);
     }
-    updateProperty("Sim", sim_presence_name(v));
 }
 
 
@@ -624,14 +627,11 @@ void Bridge::init()
 {
     qDebug() << "Establish connection with ofono";
 
-    auto connect_manager = [this]() {
-        manager_.reset(new Manager(service_name, "/", bus_));
-        auto res = sync(manager_->GetModems());
-        if (res.isError()) {
-            qWarning() << "GetModems error:" << res.error();
+    auto process_modems = [this](PathPropertiesArray const &modems) {
+        if (!manager_) {
+            qDebug() << "Manager is reset, do not enumerate modems";
             return;
         }
-        auto modems = res.value();
         qDebug() << "There is(are) " << modems.size() << " modems";
         if (!modems.size())
             return;
@@ -648,6 +648,12 @@ void Bridge::init()
                 });
         find_process_object(modems, std::bind(&Bridge::setup_modem, this, _1, _2));
     };
+
+    auto connect_manager = [this, process_modems]() {
+        manager_.reset(new Manager(service_name, "/", bus_));
+        async(this, manager_->GetModems(), process_modems);
+    };
+
     auto reset_manager = [this]() {
         qDebug() << "Ofono is unregistered, cleaning up";
         network_.reset();
@@ -683,18 +689,16 @@ void Bridge::setup_network(QString const &path)
                 update(n, v.variant());
             });
 
-    auto res = sync(network_->GetProperties());
-    if (res.isError()) {
-        qWarning() << "Network GetProperties error:" << res.error();
-        return;
-    }
-
-    auto props = res.value();
-    for (auto it = props.begin(); it != props.end(); ++it)
-        update(it.key(), it.value());
-
-    if (!network_)
-        qDebug() << "No network interface";
+    auto process_props = [this, update](QVariantMap const &props) {
+        if (!network_) {
+            qDebug() << "Network is reset, do not process props";
+            return;
+        }
+        for (auto it = props.begin(); it != props.end(); ++it)
+            update(it.key(), it.value());
+        enumerate_operators();
+    };
+    async(this, network_->GetProperties(), process_props);
 }
 
 void Bridge::setup_stk(QString const &path)
@@ -729,6 +733,7 @@ void Bridge::reset_connectionManager()
 {
     qDebug() << "Reset connection manager";
     connectionManager_.reset();
+    interfaces_.reset((size_t)Interface::ConnectionManager);
     connectionContexts_.clear();
     update_mms_context();
 }
@@ -809,14 +814,16 @@ void Bridge::enumerate_operators()
         qWarning() << "Can't enumerate operators, network is null";
         return;
     }
-    auto ops = sync(network_->GetOperators());
-    if (ops.isError()) {
-        qWarning() << "Network GetOperators error:" << ops.error();
-        return;
-    }
-    using namespace std::placeholders;
-    auto process = std::bind(&Bridge::setup_operator, this, _1, _2);
-    find_process_object(ops, process);
+    auto process_operators = [this](PathPropertiesArray const &ops) {
+        if (!network_) {
+            qDebug() << "network is null, skip operators";
+            return;
+        }
+        using namespace std::placeholders;
+        auto process = std::bind(&Bridge::setup_operator, this, _1, _2);
+        find_process_object(ops, process);
+    };
+    async(this, network_->GetOperators(), process_operators);
 }
 
 void Bridge::setup_sim(QString const &path)
