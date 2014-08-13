@@ -305,6 +305,7 @@ static const std::bitset<size_t(Status::EOE)> status_registered_("1000100");
 static const std::map<QString, QString> sim_props_map_ = {
     { "MobileCountryCode", "HomeMCC" }
     , { "MobileNetworkCode", "HomeMNC" }
+    , { "SubscriberIdentity", "SubscriberIdentity" }
 };
 
 static const std::map<QString, QString> stk_props_map_ = {
@@ -340,7 +341,6 @@ const Bridge::property_map_type Bridge::net_property_actions_ = {
             self->updateProperty("Status", v);
             self->set_status(self->map_status(v.toString()));
         } }
-    , { "CellId", direct_update("CellName") }
     , { "MobileCountryCode", direct_update("CurrentMCC") }
     , { "MobileNetworkCode", direct_update("CurrentMNC") }
     , { "CellId", direct_update("CellName") }
@@ -884,6 +884,7 @@ MainNs::MainNs(QDBusConnection &bus)
             , { "CellName", ""}
             , { "NetworkName", ""}
             , { "ExtendedNetworkName", "" }
+            , { "SubscriberIdentity", "" }
             , { "CurrentMCC", "0"}
             , { "CurrentMNC", "0"}
             , { "HomeMCC", "0"}
