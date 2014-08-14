@@ -13,3 +13,5 @@ moc*.*
 # generated for dbus
 *_interface.cpp
 *_interface.h
+*.moc_parameters
+\#*\#
