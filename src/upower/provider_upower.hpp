@@ -3,6 +3,7 @@
 
 #include "manager_interface.h"
 #include "device_interface.h"
+#include "prop_interface.h"
 
 #include <statefs/provider.hpp>
 #include <statefs/property.hpp>
@@ -15,6 +16,7 @@ namespace statefs { namespace upower {
 
 typedef OrgFreedesktopUPowerInterface Manager;
 typedef OrgFreedesktopUPowerDeviceInterface Device;
+typedef OrgFreedesktopDBusPropertiesInterface Properties;
 
 class PowerNs;
 
@@ -45,6 +47,10 @@ public:
         Phone
     };
 
+    enum class Prop {
+        Percentage = 0, OnBattery, LowBattery, TimeToEmpty, TimeToFull, State, EOE
+    };
+
     Bridge(PowerNs *, QDBusConnection &bus);
 
     virtual ~Bridge() {}
@@ -62,15 +68,30 @@ private:
 
     QDBusConnection &bus_;
     QDBusObjectPath defaultAdapter_;
+
     std::unique_ptr<Manager> manager_;
+    std::unique_ptr<Properties> manager_props_;
+
     std::unique_ptr<Device> device_;
+    std::unique_ptr<Properties> device_props_;
+
     QString device_path_;
     statefs::qt::ServiceWatch watch_;
 
-    typedef std::tuple<double, bool, bool, qlonglong,
-                       qlonglong, DeviceState> Properties;
-    const Properties default_values_;
-    Properties last_values_;
+    static const size_t propCount = static_cast<size_t>(Prop::EOE);
+    typedef std::array<QVariant, propCount> state_type;
+    static const QMap<QString, Prop> state_ids_;
+    static const state_type default_state_;
+    state_type last_state_;
+    state_type new_state_;
+
+    // use std::function as it more flexible while it takes more
+    // memory to have std::function with bindings instead of
+    // e.g. pointers to member functions
+    typedef std::function<void (Prop, QVariant const&)> action_type;
+    typedef std::array<action_type, propCount> actions_type;
+    actions_type actions_;
+    actions_type construct_actions();
 };
 
 class PowerNs : public statefs::qt::Namespace
