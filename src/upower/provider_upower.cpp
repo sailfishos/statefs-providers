@@ -25,6 +25,7 @@
 #include "provider_upower.hpp"
 
 #include <cor/util.hpp>
+#include <cor/error.hpp>
 #include <statefs/qt/dbus.hpp>
 
 #include <math.h>
@@ -37,77 +38,140 @@ using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
 using statefs::qt::sync;
 
-static char const *service_name = "org.freedesktop.UPower"; 
+static char const *service_name = "org.freedesktop.UPower";
+
+typedef Bridge::Prop Prop;
+
+const QMap<QString, Prop> Bridge::state_ids_{
+    {"Percentage", Prop::Percentage}, {"OnBattery", Prop::OnBattery}
+    , {"OnLowBattery", Prop::LowBattery}, {"TimeToEmpty", Prop::TimeToEmpty}
+    , {"TimeToFull", Prop::TimeToFull}, {"State", Prop::State}};
+
+const Bridge::state_type Bridge::default_state_{
+    {87.0, true, false, 878787, 0, UnknownState}};
 
 Bridge::Bridge(PowerNs *ns, QDBusConnection &bus)
     : PropertiesSource(ns)
     , bus_(bus)
     , watch_(bus, service_name)
-    , default_values_{87.0, true, false, 878787, 0, UnknownState}
-    , last_values_(default_values_)
+    , last_state_(default_state_)
+    , new_state_(default_state_)
+    , actions_(construct_actions())
 {
+
+}
+
+Bridge::actions_type Bridge::construct_actions()
+{
+    actions_type res = {{
+            [this](Prop, QVariant const &v) {
+                updateProperty("ChargePercentage", round(v.toDouble()));
+                updateProperty("Capacity", v);
+            }, [this](Prop, QVariant const &v) {
+                    updateProperty("OnBattery", v);
+                    if (v.toBool())
+                        updateProperty("TimeUntilFull", 0);
+            }, [this](Prop, QVariant const &v) { updateProperty("LowBattery", v);
+            }, [this](Prop, QVariant const &v) { updateProperty("TimeUntilLow", v);
+            }, [this](Prop, QVariant const &v) { updateProperty("TimeUntilFull", v);
+            }, [this](Prop, QVariant const &v) {
+                bool is_charging = (v == Charging || v == FullyCharged);
+                updateProperty("IsCharging", is_charging);
+                if (!is_charging || v == FullyCharged)
+                    updateProperty("TimeUntilFull", 0);
+                }
+        }};
+        return res;
 }
 
 void Bridge::update_all_props()
 {
-    using namespace std::placeholders;
-    auto set = std::bind(&PropertiesSource::updateProperty, this, _1, _2);
-    auto actions = std::make_tuple
-        ([&set](double v) {
-            set("ChargePercentage", round(v));
-            set("Capacity", v);
-        }, [&set](bool v) {
-            set("OnBattery", v);
-            if (v) set("TimeUntilFull", 0);
-        }, [&set](bool v) { set("LowBattery", v);
-        }, [&set](qlonglong v) { set("TimeUntilLow", v);
-        }, [&set](qlonglong v) { set("TimeUntilFull", v);
-        }, [&set](DeviceState v) {
-            bool is_charging = (v == Charging || v == FullyCharged);
-            set("IsCharging", is_charging);
-            if (!is_charging || v == FullyCharged)
-                set("TimeUntilFull", 0);
-        });
+    auto update = [this]() {
+        auto changed_count = 0;
+        for (size_t i = 0; i != propCount; ++i) {
+            auto const &now = new_state_[i];
+            if (now.isValid() && (now != last_state_[i])) {
+                ++changed_count;
+                actions_[i](static_cast<Prop>(i), now);
+            }
+        }
+        if (changed_count)
+            std::copy(new_state_.begin(), new_state_.end(), last_state_.begin());
+    };
 
-    if (device_ && manager_) {
-        Properties props_now { device_->percentage()
-                , manager_->onBattery(), manager_->onLowBattery()
-                , device_->timeToEmpty(), device_->timeToFull()
-                , (DeviceState)device_->state() };
-        cor::copy_apply_if_changed(last_values_, props_now, actions);
-    } else if (manager_) {
-        Properties props_now { 99, manager_->onBattery()
-                , manager_->onLowBattery(), 12345, 0, UnknownState };
-        cor::copy_apply_if_changed(last_values_, props_now, actions);
-    } else {
-        cor::copy_apply_if_changed(last_values_, default_values_, actions);
-    }
+    auto setProp = [this](QString const &n, QVariant const &v) {
+        auto it = state_ids_.find(n);
+        if (it == state_ids_.end()) {
+            qWarning() << "Unknown property" << n << v;
+            return;
+        }
+        new_state_[static_cast<size_t>(*it)] = v;
+    };
+
+    auto onDevProps = [setProp, update](QVariantMap const &kv) {
+        for (QString name : {"Percentage", "TimeToEmpty", "TimeToFull", "State"})
+            setProp(name, kv[name]);
+
+        update();
+    };
+
+    auto onMgrProps = [setProp, this, update, onDevProps](QVariantMap const &kv) {
+        for (QString name : {"OnBattery", "OnLowBattery"})
+            setProp(name, kv[name]);
+
+        if (device_props_)
+            async(this, device_props_->GetAll(Device::staticInterfaceName())
+                  , onDevProps);
+        else
+            update();
+    };
+
+    auto getAll = [this, update, onMgrProps, onDevProps]() {
+        if (manager_props_)
+            async(this, manager_props_->GetAll(Manager::staticInterfaceName())
+                  , onMgrProps);
+        else if (device_props_)
+            async(this, device_props_->GetAll(Device::staticInterfaceName())
+                  , onDevProps);
+        else
+            update();
+    };
+
+    cor::error_trace_msg_nothrow("Updating upower props", getAll);
 }
 
 bool Bridge::try_get_battery(QString const &path)
 {
-    auto is_battery = [](std::unique_ptr<Device> const &p) {
-        return (p->nativePath() == "battery");
-    };
-    std::unique_ptr<Device> device(new Device(service_name, path, bus_));
-    if (!is_battery(device))
-        return false;
+    bool found = false;
+    auto getBattery = [this, &found, &path]() {
+        auto is_battery = [](std::unique_ptr<Device> const &p) {
+            return (p->nativePath() == "battery");
+        };
+        std::unique_ptr<Device> device(new Device(service_name, path, bus_));
+        if (!is_battery(device))
+            return;
 
-    device_ = std::move(device);
-    device_path_ = path;
-    if (device_) {
-        connect(device_.get(), &Device::Changed
-                , this, &Bridge::update_all_props);
-    } else {
-        qWarning() << "No battery found";
-    }
-    update_all_props();
-    return true;
+        device_ = std::move(device);
+        device_path_ = path;
+        if (device_) {
+            device_props_.reset(new Properties(service_name, path, bus_));
+            connect(device_.get(), &Device::Changed
+                    , this, &Bridge::update_all_props);
+            found = true;
+        } else {
+            qWarning() << "No battery found";
+        }
+    };
+    cor::error_trace_msg_nothrow("Checking is device battery", getBattery);
+    if (found)
+        update_all_props();
+    return found;
 }
 
 void Bridge::init_manager()
 {
     manager_.reset(new Manager(service_name, "/org/freedesktop/UPower", bus_));
+    manager_props_.reset(new Properties(service_name, "/org/freedesktop/UPower", bus_));
     auto find_battery = [this](QList<QDBusObjectPath> const &devices) {
         qDebug() << "found " << devices.size() << " upower device(s)";
         std::find_if(devices.begin(), devices.end()

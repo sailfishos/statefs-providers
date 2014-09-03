@@ -12,23 +12,18 @@ link_directories(
 
 set(DEV_IF DeviceKit.Power.Device.xml)
 set(MGR_IF DeviceKit.Power.xml) 
+set(PROP_IF DBus.Properties.xml) 
 
-# set_source_files_properties(${MGR_IF} ${DEV_IF}
-#   PROPERTIES INCLUDE common.h
-#   )
-set_source_files_properties(${MGR_IF} ${DEV_IF}
+set_source_files_properties(${MGR_IF} ${DEV_IF} ${PROP_IF}
   PROPERTIES NO_NAMESPACE TRUE
   )
 
- 
-
 qt5_add_dbus_interface(SRC ${MGR_IF} manager_interface)
 qt5_add_dbus_interface(SRC ${DEV_IF} device_interface)
-#qt5_wrap_cpp(STATEFS_QT_SRC ${STATEFS_QT_HEADERS})
+qt5_add_dbus_interface(SRC ${PROP_IF} prop_interface)
 
 add_library(provider-upower SHARED
   ${SRC}
-#  ${STATEFS_QT_SRC}
   provider_upower.cpp
   )
 
