@@ -25,6 +25,7 @@ class Bridge : public QObject, public statefs::qt::PropertiesSource
     Q_OBJECT;
 public:
 
+    // see upower docs
     enum DeviceState {
         UnknownState = 0,
         Charging,
@@ -35,6 +36,7 @@ public:
         PendingDischarge
     };
 
+    // see upower docs
     enum DeviceType {
         UnknownDevice,
         LinePower,
