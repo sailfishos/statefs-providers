@@ -63,6 +63,44 @@ Bridge::Bridge(PowerNs *ns, QDBusConnection &bus)
 
 Bridge::actions_type Bridge::construct_actions()
 {
+    auto processState = [this](Prop, QVariant const &v) {
+        char const *state = "unknown";
+        bool is_charging = false;
+        auto state_id = v.toUInt();
+
+        switch (state_id) {
+        case UnknownState:
+            // do nothing
+            break;
+        case Charging:
+            is_charging = true;
+            state = "charging";
+            break;
+        case Discharging:
+            state = "discharging";
+            break;
+        case Empty:
+            state = "empty";
+            break;
+        case FullyCharged:
+            state = "full";
+            break;
+        case PendingCharge:
+            // or maybe should be unknown
+            state = "charging";
+            break;
+        case PendingDischarge:
+            // or maybe should be unknown
+            state = "discharging";
+            break;
+        default:
+            qWarning() << "Unknown upower state" << state_id;
+            break;
+        }
+        updateProperty("IsCharging", is_charging);
+        updateProperty("State", state);
+    };
+
     actions_type res = {{
             [this](Prop, QVariant const &v) {
                 updateProperty("ChargePercentage", round(v.toDouble()));
@@ -74,12 +112,7 @@ Bridge::actions_type Bridge::construct_actions()
             }, [this](Prop, QVariant const &v) { updateProperty("LowBattery", v);
             }, [this](Prop, QVariant const &v) { updateProperty("TimeUntilLow", v);
             }, [this](Prop, QVariant const &v) { updateProperty("TimeUntilFull", v);
-            }, [this](Prop, QVariant const &v) {
-                bool is_charging = (v == Charging || v == FullyCharged);
-                updateProperty("IsCharging", is_charging);
-                if (!is_charging || v == FullyCharged)
-                    updateProperty("TimeUntilFull", 0);
-                }
+            }, processState
         }};
         return res;
 }
@@ -223,7 +256,8 @@ PowerNs::PowerNs(QDBusConnection &bus)
     , { "LowBattery", "0" }
     , { "TimeUntilLow", "878787" }
     , { "TimeUntilFull", "0" }
-    , { "IsCharging", "0" }}
+    , { "IsCharging", "0" }
+    , { "State", "unknown" }}
 {
     for (auto v : defaults_)
         addProperty(v.first, v.second);
