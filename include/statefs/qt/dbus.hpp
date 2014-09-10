@@ -35,16 +35,29 @@ bool callback_or_error(QDBusPendingReply<T> const &reply, OnValue on_value)
     return true;
 }
 
-template <typename OnValue, typename T>
-void async(QObject *parent, QDBusPendingReply<T> &&reply, OnValue on_value)
+template <typename T, typename OnValue>
+void async(QObject *parent, QDBusPendingCallWatcher *watcher, OnValue on_value)
 {
-    auto watcher = new QDBusPendingCallWatcher(reply, parent);
     parent->connect(watcher, &QDBusPendingCallWatcher::finished
                   , [on_value](QDBusPendingCallWatcher *w) {
                         QDBusPendingReply<T> reply = *w;
                         callback_or_error(reply, on_value);
                         w->deleteLater();
                     });
+}
+
+template <typename T, typename OnValue>
+void async(QObject *parent, QDBusPendingCall const &call, OnValue &&on_value)
+{
+    auto watcher = new QDBusPendingCallWatcher(call, parent);
+    async<T>(parent, watcher, std::forward<OnValue>(on_value));
+}
+
+template <typename OnValue, typename T>
+void async(QObject *parent, QDBusPendingReply<T> &&reply, OnValue on_value)
+{
+    auto watcher = new QDBusPendingCallWatcher(reply, parent);
+    async<T>(parent, watcher, std::forward<OnValue>(on_value));
 }
 
 template <typename OnValue, typename T>
