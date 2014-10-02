@@ -361,6 +361,7 @@ const Bridge::property_map_type Bridge::operator_property_actions_ = {
 
 const Bridge::property_map_type Bridge::connman_property_actions_ = {
     { "RoamingAllowed", direct_update("DataRoamingAllowed") }
+    , { "Attached", direct_update("GPRSAttached") }
 };
 
 Bridge::Bridge(MainNs *ns, QDBusConnection &bus)
@@ -892,6 +893,7 @@ MainNs::MainNs(QDBusConnection &bus)
             , { "StkIdleModeText", ""}
             , { "MMSContext", ""}
             , { "DataRoamingAllowed", "0"}
+            , { "GPRSAttached", "0"}
         })
 {
     // contextkit prop
