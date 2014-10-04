@@ -366,7 +366,7 @@ BatteryNs::BatteryNs()
         }
     }
     mon_->run();
-    monitor_thread_ = cor::make_unique<std::thread>([&io_]() { io_.run(); });
+    monitor_thread_ = cor::make_unique<std::thread>([this]() { io_.run(); });
 }
 
 void BatteryNs::set(Prop id, std::string const &v)
