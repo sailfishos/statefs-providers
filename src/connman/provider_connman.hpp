@@ -8,7 +8,7 @@
 #include <statefs/provider.hpp>
 #include <statefs/property.hpp>
 #include <statefs/qt/ns.hpp>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 #include <map>
 #include <set>
@@ -22,7 +22,7 @@ namespace statefs { namespace connman {
 typedef NetConnmanManagerInterface Manager;
 typedef NetConnmanServiceInterface Service;
 typedef NetConnmanTechnologyInterface Technology;
-using statefs::qt::ServiceWatch;
+using qtaround::dbus::ServiceWatch;
 
 class InternetNs;
 

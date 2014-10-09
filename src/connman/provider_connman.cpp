@@ -25,14 +25,15 @@
 #include "provider_connman.hpp"
 #include <math.h>
 #include <iostream>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 #include "dbus_types.hpp"
 
 namespace statefs { namespace connman {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
-using statefs::qt::sync;
+using qtaround::dbus::sync;
+using qtaround::dbus::async;
 
 static char const *service_name = "net.connman";
 

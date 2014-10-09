@@ -26,7 +26,7 @@
 
 #include <cor/util.hpp>
 #include <cor/error.hpp>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 #include <math.h>
 #include <iostream>
@@ -36,7 +36,7 @@ namespace statefs { namespace upower {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
-using statefs::qt::sync;
+using qtaround::dbus::async;
 
 static char const *service_name = "org.freedesktop.UPower";
 

@@ -25,13 +25,14 @@
 #include "provider_profile.hpp"
 #include <math.h>
 #include <iostream>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 namespace statefs { namespace profile {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
-using statefs::qt::sync;
+using qtaround::dbus::async;
+using qtaround::dbus::sync;
 
 static char const *service_name = "com.nokia.profiled";
 static char const *root_path = "/com/nokia/profiled";

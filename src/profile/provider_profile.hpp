@@ -6,7 +6,7 @@
 #include <statefs/provider.hpp>
 #include <statefs/property.hpp>
 #include <statefs/qt/ns.hpp>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 #include <map>
 #include <QDBusConnection>
@@ -17,7 +17,7 @@
 namespace statefs { namespace profile {
 
 typedef ComNokiaProfiledInterface Profile;
-using statefs::qt::ServiceWatch;
+using qtaround::dbus::ServiceWatch;
 
 class ProfileNs;
 

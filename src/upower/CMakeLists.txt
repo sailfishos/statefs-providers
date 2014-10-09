@@ -31,6 +31,7 @@ target_link_libraries(provider-upower
   statefs-providers-qt5
   ${CMAKE_THREAD_LIBS_INIT}
   ${STATEFS_LIBRARIES}
+  ${QTAROUND_DBUS_LIBRARIES}
   ${Qt5Core_LIBRARIES}
   ${Qt5DBus_LIBRARIES}
   )

@@ -17,7 +17,7 @@
 #include <statefs/provider.hpp>
 #include <statefs/property.hpp>
 #include <statefs/qt/ns.hpp>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 #include <QDBusConnection>
 #include <QString>
@@ -37,7 +37,8 @@ typedef OrgOfonoSimManagerInterface SimManager;
 typedef OrgOfonoSimToolkitInterface SimToolkit;
 typedef OrgOfonoConnectionManagerInterface ConnectionManager;
 typedef OrgOfonoConnectionContextInterface ConnectionContext;
-using statefs::qt::ServiceWatch;
+
+using qtaround::dbus::ServiceWatch;
 
 enum class Interface {
     AssistedSatelliteNavigation,

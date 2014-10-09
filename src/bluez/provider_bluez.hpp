@@ -18,6 +18,8 @@ typedef OrgBluezManagerInterface Manager;
 typedef OrgBluezAdapterInterface Adapter;
 typedef OrgBluezDeviceInterface Device;
 
+using qtaround::dbus::ServiceWatch;
+
 class BlueZ;
 
 class Bridge : public QObject, public statefs::qt::PropertiesSource
@@ -44,7 +46,7 @@ private:
     std::unique_ptr<Adapter> adapter_;
     std::map<QDBusObjectPath,std::unique_ptr<Device> > devices_;
     std::set<QDBusObjectPath> connected_;
-    statefs::qt::ServiceWatch watch_;
+    ServiceWatch watch_;
 };
 
 class BlueZ : public statefs::qt::Namespace

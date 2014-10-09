@@ -39,16 +39,19 @@ set(CMAKE_CXX_FLAGS
 
 pkg_check_modules(STATEFS statefs-cpp REQUIRED)
 pkg_check_modules(STATEFS_QT5 statefs-qt5 REQUIRED)
+pkg_check_modules(QTAROUND_DBUS qtaround-dbus REQUIRED)
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${STATEFS_INCLUDES}
   ${STATEFS_QT5_INCLUDES}
+  ${QTAROUND_DBUS_INCLUDE_DIRS}
 )
 
 link_directories(
   ${STATEFS_LIBS}
   ${STATEFS_QT5_LIBS}
+  ${QTAROUND_DBUS_LIBRARY_DIRS}
 )
 
 install(DIRECTORY include/statefs DESTINATION include/qt5)
@@ -57,8 +60,6 @@ find_package(Threads)
 
 find_package(Qt5Core REQUIRED)
 find_package(Qt5DBus REQUIRED)
-
-set(STATEFS_QT_HEADERS ${CMAKE_SOURCE_DIR}/include/statefs/qt/dbus.hpp)
 
 add_subdirectory(src/util)
 add_subdirectory(src/bluez)
