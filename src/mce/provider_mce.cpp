@@ -25,7 +25,8 @@
 #include "provider_mce.hpp"
 #include <math.h>
 #include <iostream>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
+
 
 #include <mce/dbus-names.h> // from mce-dev
 #include <mce/mode-names.h> // from mce-dev
@@ -34,7 +35,8 @@ namespace statefs { namespace mce {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
-using statefs::qt::sync;
+using qtaround::dbus::sync;
+using qtaround::dbus::async;
 
 static char const *service_name = "com.nokia.mce";
 

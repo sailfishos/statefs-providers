@@ -26,7 +26,7 @@
 
 #include "provider_ofono.hpp"
 #include "dbus_types.hpp"
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 #include <math.h>
 #include <iostream>
@@ -48,8 +48,8 @@ namespace statefs { namespace ofono {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
-using statefs::qt::sync;
-using statefs::qt::async;
+using qtaround::dbus::sync;
+using qtaround::dbus::async;
 
 static char const *service_name = "org.ofono";
 

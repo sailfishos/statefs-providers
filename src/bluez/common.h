@@ -7,7 +7,7 @@
 #include <QtDBus/QtDBus>
 
 #include <tuple>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 typedef std::tuple<unsigned, QString> BluezService;
 /* struct BluezService */

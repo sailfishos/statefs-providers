@@ -26,13 +26,14 @@
 #include <iostream>
 #include <functional>
 #include <cor/util.hpp>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 namespace statefs { namespace bluez {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
-using statefs::qt::async;
+using qtaround::dbus::async;
+
 
 static char const *service_name = "org.bluez";
 

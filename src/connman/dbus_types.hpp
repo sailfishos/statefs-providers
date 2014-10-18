@@ -3,7 +3,7 @@
 
 #include <tuple>
 #include <QList>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 typedef std::tuple<QDBusObjectPath, QVariantMap> PathProperties;
 Q_DECLARE_METATYPE(PathProperties);

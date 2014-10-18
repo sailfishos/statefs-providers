@@ -8,9 +8,11 @@
 #include <statefs/provider.hpp>
 #include <statefs/property.hpp>
 #include <statefs/qt/ns.hpp>
-#include <statefs/qt/dbus.hpp>
+#include <qtaround/dbus.hpp>
 
 #include <QObject>
+
+using qtaround::dbus::ServiceWatch;
 
 namespace statefs { namespace upower {
 
@@ -78,7 +80,7 @@ private:
     std::unique_ptr<Properties> device_props_;
 
     QString device_path_;
-    statefs::qt::ServiceWatch watch_;
+    ServiceWatch watch_;
 
     static const size_t propCount = static_cast<size_t>(Prop::EOE);
     typedef std::array<QVariant, propCount> state_type;
