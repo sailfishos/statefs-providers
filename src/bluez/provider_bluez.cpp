@@ -141,8 +141,8 @@ BlueZ::BlueZ(QDBusConnection &bus)
     : Namespace("Bluetooth", std::unique_ptr<PropertiesSource>
                 (new Bridge(this, bus)))
     , defaults_({
-            { "Enabled", "0" }
-            , { "Visible", "0" }
+            { "Powered", "0" }
+            , { "Discoverable", "0" }
             , { "Connected", "0" }
             , { "Address", "00:00:00:00:00:00" }})
 {
