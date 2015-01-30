@@ -55,6 +55,7 @@ const BatteryNs::info_type BatteryNs::info = {{
     , make_tuple("TimeUntilLow", "3600")
     , make_tuple("TimeUntilFull", "0")
     , make_tuple("IsCharging", "0")
+    , make_tuple("State", "unknown")
 }};
 
 BatteryNs::BatteryNs() : Namespace("Battery")
@@ -204,6 +205,25 @@ bool BatteryNs::readBatteryValues()
     } else {
         set(Prop::ChargeBars, statefs_attr(0));
     }
+    
+    char const *state = "unknown";    
+    if (_isCharging) {
+        state = "charging";
+    } else {
+        switch (st[bme_stat_bat_state]) {
+           case bme_bat_state_empty:
+                state = "empty";
+                break;
+           case bme_bat_state_low:
+           case bme_bat_state_ok:
+                state = "discharging";
+                break;
+           case bme_bat_state_full:
+                state = "full";
+                break;
+           }
+    }
+    set(Prop::State, state);
 
     set(Prop::TimeUntilFull, statefs_attr(st[bme_stat_charging_time_left_min] * NANOSECS_PER_MIN));
 
