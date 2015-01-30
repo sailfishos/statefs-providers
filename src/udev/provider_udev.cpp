@@ -44,13 +44,6 @@ public:
         return *this;
     }
 
-    ChangingValue& operator = (ChangingValue<T> &&from)
-    {
-        ChangingValue<T> tmp(std::move(from));
-        std::swap(*this, tmp);
-        return *this;
-    }
-
     bool changed() const { return now_ != prev_; }
 
     T last() { return now_; }
@@ -271,7 +264,7 @@ class BatteryInfo
 {
 public:
     BatteryInfo()
-        : updated_on(::time(nullptr))
+        : energy_now_time(0)
         , energy_now(energy_full_default)
         , capacity_from_energy(42)
         , capacity(42)
@@ -289,6 +282,7 @@ public:
         , low_capacity_(env_get("BATTERY_LOW_LIMIT", 10))
         , denergy_(6, 10)
         , path_("")
+        , calculate_energy_(&BatteryInfo::calculate_energy_current)
     {
         calculate_power_limits();
     }
@@ -299,6 +293,10 @@ public:
         energy_full_ = attr<long>(dev_->attr("energy_full"));
         path_ = attr<std::string>(dev_->path());
         log.info("Battery: ", path_, ", full @ ", energy_full_);
+        calculate_energy_ = (dev_->attr("current_now")
+                             && dev_->attr("voltage_now")
+                             ? &BatteryInfo::calculate_energy_current
+                             : &BatteryInfo::calculate_energy_power_now);
         calculate_power_limits();
     }
 
@@ -317,14 +315,14 @@ public:
 
     void on_processed()
     {
-        update_all(updated_on, energy_now, capacity_from_energy, capacity
-                   , voltage, current, temperature, status
+        update_all(energy_now_time, energy_now, capacity_from_energy
+                   , capacity , voltage, current, temperature, status
                    , time_to_full, time_to_low, level, power);
     }
 
     long get_next_timeout() const;
 
-    ChangingValue<time_t> updated_on;
+    ChangingValue<time_t> energy_now_time;
     ChangingValue<long> energy_now;
     ChangingValue<double> capacity_from_energy;
     ChangingValue<long> capacity;
@@ -337,6 +335,12 @@ public:
     ChangingValue<BatteryLevel> level;
     ChangingValue<long> power;
 
+    void set_energy(long v) {
+        energy_now.set(v);
+        if (energy_now.changed())
+            energy_now_time.set(::time(nullptr));
+    }
+
 private:
 
     void calculate_power_limits()
@@ -347,6 +351,9 @@ private:
                   , mw_per_percent_
                   , sec_per_percent_max_);
     }
+
+    void calculate_energy_power_now();
+    void calculate_energy_current();
 
     std::unique_ptr<udevpp::Device> dev_;
     long energy_full_;
@@ -359,6 +366,7 @@ private:
     long mw_per_percent_;
     long sec_per_percent_max_;
     long dtime_;
+    void (BatteryInfo::*calculate_energy_)(void);
 };
 
 struct ChargerInfo
@@ -799,9 +807,8 @@ void BatteryInfo::update(udevpp::Device &&from_dev)
         log.error("Battery is null, do not update battery info");
         return;
     }
-    updated_on.set(::time(nullptr));
 
-    energy_now.set(attr<long>(dev_->attr("energy_now")));
+    set_energy(attr<long>(dev_->attr("energy_now")));
     current.set(attr<long>(dev_->attr("current_now")));
     voltage.set(attr<long>(dev_->attr("voltage_now")));
     temperature.set(attr<long>(dev_->attr("temp")));
@@ -809,19 +816,29 @@ void BatteryInfo::update(udevpp::Device &&from_dev)
     capacity.set(attr<long>(dev_->attr("capacity")));
 }
 
-void BatteryInfo::calculate(bool is_recalculate)
+void BatteryInfo::calculate_energy_power_now()
 {
-    dtime_ = updated_on.last() - updated_on.previous();
+    auto dt = energy_now_time.last() - energy_now_time.previous();
+    auto de = energy_now.last() - energy_now.previous();
+    if (dt && de)
+        set_denergy_now(de / dt);
+}
 
-    // do not use energy_now for power calc, on some android devices
-    // it is wrong or changes rarely
+void BatteryInfo::calculate_energy_current()
+{
     auto i = current.last(), v = voltage.last();
     auto p = (i / -1000) * (v / 1000) / 1000;
     log.debug("Calc power I*V (", i, "*", v, ")=", p);
     set_denergy_now(p);
+}
 
-    if (energy_now.changed() || is_recalculate)
+void BatteryInfo::calculate(bool is_recalculate)
+{
+
+    (this->*calculate_energy_)();
+    if (energy_now.changed() || is_recalculate) {
         capacity_from_energy.set((double)energy_now.last() / energy_full_ * 100);
+    }
 
     // TODO: 2 different sources of capacity allow to compare and
     // verify driver data
