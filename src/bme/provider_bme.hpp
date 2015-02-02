@@ -19,7 +19,7 @@ class BatteryNs : public statefs::Namespace
 {
 public:
     enum class Prop {
-        ChargePercentage, ChargeBars, OnBattery, LowBattery, TimeUntilLow, TimeUntilFull, IsCharging
+        ChargePercentage, ChargeBars, OnBattery, LowBattery, TimeUntilLow, TimeUntilFull, IsCharging, State
         , EOE // end of enum
     };
 
