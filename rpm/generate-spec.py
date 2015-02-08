@@ -2,6 +2,5 @@
 
 import SpecGenerator
 
-SpecGenerator.process(
-    out_file = "statefs-providers.spec"
-    , filters = [])
+SpecGenerator.process(out_file = "statefs-providers.spec"
+                      , target = "mer")

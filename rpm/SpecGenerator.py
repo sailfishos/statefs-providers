@@ -108,6 +108,13 @@ templates.decl_keyboard_generic = '''
 BuildRequires: pkgconfig(cor-udev) >= 0.1.14
 '''
 
+templates.make = '''
+%cmake -DVERSION=%{{version}} %{{?_with_multiarch:-DENABLE_MULTIARCH=ON}} {options}
+make %{{?jobs:-j%jobs}}
+make doc
+pushd inout && %cmake && popd
+'''
+
 def filter_out(prefix, data, filter_fn):
     t = type(data)
     if t == list:
@@ -120,17 +127,23 @@ def filter_out(prefix, data, filter_fn):
     else:
         return data if filter_fn('_'.join((prefix, str(data)))) else None
 
-def setup(d, filters):
+def setup(d, target):
+    filters = tuple()
+    make_options = ""
+    if target == "mer":
+        pass
+    else:
+        filters = ['.*mce']
+
     def mk_filter_fn(expr):
         r = re.compile(expr)
-        print "FN for", expr
         def dump(r,  v):
-            print "CHECK", r.pattern, v
             res = r.match(v)
             print "RES", res
             return res
         return lambda v: r.match(v) is None
     templates.filters = [mk_filter_fn(x) for x in filters]
+    templates.make = templates.make.format(options = make_options)
 
     d.templates = {
         "qt5" : templates.package_qt5
@@ -412,6 +425,10 @@ class Actions:
                for p in Actions.packages[name]]
         return list(itertools.chain(*res))
 
+    @action
+    def make(self, name):
+        return templates.make.split('\n')
+
 def replaced(l):
     m = templates.re.match(l)
     if (m is None):
@@ -424,8 +441,8 @@ def replaced(l):
     return action(name)
 
 
-def process(out_file, filters):
-    setup(Actions, filters)
+def process(out_file, target):
+    setup(Actions, target)
 
     #print Actions("").get_obsoletes("qt5", "meego", "bluez")
     #print Actions("").get_provides("qt5", "connman")
@@ -440,4 +457,4 @@ def process(out_file, filters):
             out.write('\n')
 
 if __name__ == '__main__':
-    process(out_file = "statefs-providers.spec", filters = tuple())
+    process(out_file = "statefs-providers.spec")
