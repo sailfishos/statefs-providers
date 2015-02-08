@@ -9,6 +9,8 @@ find_package(PkgConfig REQUIRED)
 set(prefix ${CMAKE_INSTALL_PREFIX})
 find_package(Cor)
 
+option(ENABLE_UPOWER "Build upower provider" OFF)
+
 find_package(Threads)
 
 find_package(Qt5Core REQUIRED)
@@ -39,7 +41,9 @@ add_subdirectory(doc)
 add_subdirectory(src/util)
 add_subdirectory(src/bluez)
 add_subdirectory(src/bme)
-add_subdirectory(src/upower)
+if (ENABLE_UPOWER)
+  add_subdirectory(src/upower)
+endif()
 add_subdirectory(src/connman)
 add_subdirectory(src/ofono)
 

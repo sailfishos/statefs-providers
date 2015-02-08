@@ -117,29 +117,6 @@ Conflicts: statefs-provider-inout-bluetooth
 %{summary}
 
 
-%package -n statefs-provider-upower
-Summary: Statefs provider, source - upower
-Group: System Environment/Libraries
-Requires(post): /sbin/ldconfig
-Requires(postun): /sbin/ldconfig
-Requires: %{n_common} = %{version}-%{release}
-Requires: statefs-loader-qt5 >= 0.0.9
-Requires: upower >= 0.9.18
-Obsoletes: contextkit-meego-battery-upower <= %{meego_ver}
-Provides: contextkit-meego-battery-upower = %{meego_ver1}
-Obsoletes: contextkit-plugin-power <= %{ckit_version}
-Provides: contextkit-plugin-power = %{ckit_version1}
-Obsoletes: contextkit-plugin-upower <= %{ckit_version}
-Provides: contextkit-plugin-upower = %{ckit_version1}
-Obsoletes: contextkit-plugin-power-bme <= %{ckit_version}
-Provides: contextkit-plugin-power-bme = %{ckit_version1}
-Provides: statefs-provider-power = %{version}-%{release}
-Conflicts: statefs-provider-udev
-Conflicts: statefs-provider-inout-power
-%description -n statefs-provider-upower
-%{summary}
-
-
 %package -n statefs-provider-connman
 Summary: Statefs provider, source - connman
 Group: System Environment/Libraries
@@ -230,6 +207,8 @@ BuildRequires: boost-filesystem >= 1.51.0
 BuildRequires: boost-devel >= 1.51.0
 BuildRequires: pkgconfig(cor-udev) >= 0.1.14
 BuildRequires: pkgconfig(statefs-util) >= %{statefs_ver}
+Obsoletes: statefs-provider-upower <= 0.2.66.1
+Provides: statefs-provider-upower = 0.2.66.1
 Obsoletes: contextkit-meego-battery-upower <= %{meego_ver}
 Provides: contextkit-meego-battery-upower = %{meego_ver1}
 Obsoletes: contextkit-plugin-power <= %{ckit_version}
@@ -239,7 +218,6 @@ Provides: contextkit-plugin-upower = %{ckit_version1}
 Obsoletes: contextkit-plugin-power-bme <= %{ckit_version}
 Provides: contextkit-plugin-power-bme = %{ckit_version1}
 Provides: statefs-provider-power = %{version}-%{release}
-Conflicts: statefs-provider-upower
 Conflicts: statefs-provider-inout-power
 %description -n statefs-provider-udev
 %{summary}
@@ -429,7 +407,8 @@ BuildArch: noarch
 
 
 %build
-%cmake -DVERSION=%{version} %{?_with_multiarch:-DENABLE_MULTIARCH=ON}
+
+%cmake -DVERSION=%{version} %{?_with_multiarch:-DENABLE_MULTIARCH=ON} -DENABLE_UPOWER=OFF
 make %{?jobs:-j%jobs}
 make doc
 pushd inout && %cmake && popd
@@ -450,7 +429,6 @@ pushd inout && make install DESTDIR=%{buildroot} && popd
 
 
 %statefs_provider_install qt5 bluez %{_statefs_libdir}/libprovider-bluez.so system
-%statefs_provider_install qt5 upower %{_statefs_libdir}/libprovider-upower.so system
 %statefs_provider_install qt5 connman %{_statefs_libdir}/libprovider-connman.so system
 %statefs_provider_install qt5 ofono %{_statefs_libdir}/libprovider-ofono.so system
 %statefs_provider_install qt5 mce %{_statefs_libdir}/libprovider-mce.so system
@@ -509,28 +487,6 @@ fi
 %statefs_provider_unregister qt5 bluez system
 
 %postun %{p_bluez}
-/sbin/ldconfig
-%statefs_postun
-
-%files %{p_upower} -f upower.files
-%defattr(-,root,root,-)
-
-%pre %{p_upower}
-%statefs_pre
-if [ -f %{_statefs_libdir}/libprovider-upower.so ]; then
-statefs unregister %{_statefs_libdir}/libprovider-upower.so || :
-fi
-
-%post %{p_upower}
-/sbin/ldconfig
-%statefs_provider_register qt5 upower system
-%statefs_post
-
-%preun %{p_upower}
-%statefs_preun
-%statefs_provider_unregister qt5 upower system
-
-%postun %{p_upower}
 /sbin/ldconfig
 %statefs_postun
 

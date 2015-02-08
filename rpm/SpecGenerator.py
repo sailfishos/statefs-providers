@@ -64,12 +64,18 @@ BuildArch: noarch
 '''
 
 templates.decl_udev = '''
-%if %{undefined suse_version}
+%if %{{undefined suse_version}}
 BuildRequires: boost-filesystem >= 1.51.0
 %endif
 BuildRequires: boost-devel >= 1.51.0
 BuildRequires: pkgconfig(cor-udev) >= 0.1.14
-BuildRequires: pkgconfig(statefs-util) >= %{statefs_ver}
+BuildRequires: pkgconfig(statefs-util) >= %{{statefs_ver}}
+{aux}
+'''
+
+templates.decl_udev_mer = '''
+Obsoletes: statefs-provider-upower <= 0.2.66.1
+Provides: statefs-provider-upower = 0.2.66.1
 '''
 
 templates.decl_bluez = '''
@@ -130,8 +136,13 @@ def filter_out(prefix, data, filter_fn):
 def setup(d, target):
     filters = tuple()
     make_options = ""
+    udev_conflicts = [ "upower", "inout-power" ]
+    udev_aux = ""
     if target == "mer":
-        pass
+        filters = ['.*upower']
+        make_options = "-DENABLE_UPOWER=OFF"
+        udev_aux = templates.decl_udev_mer
+        udev_conflicts = [ "inout-power" ]
     else:
         filters = ['.*mce']
 
@@ -142,8 +153,10 @@ def setup(d, target):
             print "RES", res
             return res
         return lambda v: r.match(v) is None
+
     templates.filters = [mk_filter_fn(x) for x in filters]
     templates.make = templates.make.format(options = make_options)
+    templates.decl_udev = templates.decl_udev.format(aux = udev_aux)
 
     d.templates = {
         "qt5" : templates.package_qt5
@@ -198,7 +211,7 @@ def setup(d, target):
             , "mce" : "inout-mode-control"
             , "profile" : "inout-profile"
         }, "default" : {
-            "udev" : [ "upower", "inout-power" ]
+            "udev" : udev_conflicts
             , "keyboard_generic" : "inout-keyboard"
             , "bme" : [ "upower", "inout-power" ]
         }, "inout" : {

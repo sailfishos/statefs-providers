@@ -106,11 +106,7 @@ Requires: statefs-provider-qt5 = %{version}-%{release}
 
 
 %build
-%cmake -DVERSION=%{version} %{?_with_multiarch:-DENABLE_MULTIARCH=ON}
-make %{?jobs:-j%jobs}
-make doc
-pushd inout && %cmake && popd
-
+@@make-all@@
 
 %install
 rm -rf %{buildroot}
