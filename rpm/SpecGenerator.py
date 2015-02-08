@@ -7,7 +7,6 @@ from optparse import OptionParser
 
 
 def action(fn):
-    print "ACTION", fn
     setattr(fn, 'action', True)
     return fn
 
@@ -150,7 +149,6 @@ def setup(d, target):
         r = re.compile(expr)
         def dump(r,  v):
             res = r.match(v)
-            print "RES", res
             return res
         return lambda v: r.match(v) is None
 
@@ -348,7 +346,6 @@ class Actions:
         src = Actions.provides[pk_type]
         res = src.get(name, None)
         if res is None:
-            print name, " !providers"
             return res
 
         if type(res) == str:
