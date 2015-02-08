@@ -85,7 +85,7 @@ Requires: statefs-provider-qt5 = %{version}-%{release}
 %define p_profile -n statefs-provider-profile
 %define p_keyboard_generic -n statefs-provider-keyboard-generic
 
-%define p_udev -n statefs-provider-udev
+%define p_power_udev -n statefs-provider-power-udev
 %define p_back_cover -n statefs-provider-back-cover
 
 %define p_inout_bluetooth -n statefs-provider-inout-bluetooth
@@ -196,7 +196,7 @@ Conflicts: statefs-provider-inout-profile
 %{summary}
 
 
-%package -n statefs-provider-udev
+%package -n statefs-provider-power-udev
 Summary: Statefs provider, source - sysfs/udev
 Group: System Environment/Libraries
 Requires(post): /sbin/ldconfig
@@ -219,7 +219,7 @@ Obsoletes: contextkit-plugin-power-bme <= %{ckit_version}
 Provides: contextkit-plugin-power-bme = %{ckit_version1}
 Provides: statefs-provider-power = %{version}-%{release}
 Conflicts: statefs-provider-inout-power
-%description -n statefs-provider-udev
+%description -n statefs-provider-power-udev
 %{summary}
 
 
@@ -298,7 +298,7 @@ Obsoletes: contextkit-plugin-power-bme <= %{ckit_version}
 Provides: contextkit-plugin-power-bme = %{ckit_version1}
 Provides: statefs-provider-power = %{version}-%{release}
 Conflicts: statefs-provider-upower
-Conflicts: statefs-provider-udev
+Conflicts: statefs-provider-power-udev
 BuildArch: noarch
 %description -n statefs-provider-inout-power
 %{summary}
@@ -419,7 +419,7 @@ rm -rf %{buildroot}
 %cmake_install
 pushd inout && make install DESTDIR=%{buildroot} && popd
 
-%statefs_provider_install default udev %{_statefs_libdir}/libprovider-udev.so system
+%statefs_provider_install default power_udev %{_statefs_libdir}/libprovider-power_udev.so system
 
 %statefs_provider_install default bme %{_statefs_libdir}/libprovider-bme.so system
 
@@ -578,22 +578,22 @@ fi
 
 
 
-%files %{p_udev} -f udev.files
+%files %{p_power_udev} -f power_udev.files
 %defattr(-,root,root,-)
 
-%pre %{p_udev}
+%pre %{p_power_udev}
 %statefs_pre
 
-%post %{p_udev}
+%post %{p_power_udev}
 /sbin/ldconfig
-%statefs_provider_register default udev system
+%statefs_provider_register default power_udev system
 %statefs_post
 
-%preun %{p_udev}
+%preun %{p_power_udev}
 %statefs_preun
-%statefs_provider_unregister default udev system
+%statefs_provider_unregister default power_udev system
 
-%postun %{p_udev}
+%postun %{p_power_udev}
 /sbin/ldconfig
 %statefs_postun
 

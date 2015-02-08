@@ -170,7 +170,7 @@ def setup(d, target):
             , "mce" : templates.decl_mce
             , "profile" : templates.decl_profile
         }, "default" : {
-            "udev" : templates.decl_udev
+            "power_udev" : templates.decl_udev
             , "keyboard_generic" : templates.decl_keyboard_generic
             , "bme" : templates.decl_bme
         }
@@ -185,7 +185,7 @@ def setup(d, target):
             , "mce" : "system"
             , "profile" : "profile-info"
         }, "default" : {
-            "udev" : "power"
+            "power_udev" : "power"
             , "keyboard_generic" : "keyboard"
             , "bme" : "power"
         }, "inout" : {
@@ -203,18 +203,18 @@ def setup(d, target):
     d.conflicts = {
         "qt5" : {
             "bluez" : "inout-bluetooth"
-            , "upower" : [ "udev", "inout-power" ]
+            , "upower" : [ "power-udev", "inout-power" ]
             , "connman" : "inout-network"
             , "ofono" : "inout-cellular"
             , "mce" : "inout-mode-control"
             , "profile" : "inout-profile"
         }, "default" : {
-            "udev" : udev_conflicts
+            "power_udev" : udev_conflicts
             , "keyboard_generic" : "inout-keyboard"
             , "bme" : [ "upower", "inout-power" ]
         }, "inout" : {
             "bluetooth" : "bluez"
-            , "power" : [ "upower", "udev" ]
+            , "power" : [ "upower", "power-udev" ]
             , "network" : [ "connman" ]
             , "cellular" : "ofono"
             , "mode_control" : "mce"
@@ -233,7 +233,7 @@ def setup(d, target):
             , "mce" : ", source - mce"
             , "profile" : ", source - profiled"
         }, "default" : {
-            "udev" : ", source - sysfs/udev"
+            "power_udev" : ", source - sysfs/udev"
             , "keyboard_generic" : ", source - sysfs/udev"
             , "bme" : ", source - bme"
             , "back_cover" : ", source - back_cover"
@@ -295,7 +295,7 @@ def setup(d, target):
     d.qt5_system = only_suitable('qt5', ["bluez", "upower", "connman", "ofono", "mce"])
     d.qt5_user = only_suitable('qt5', ["profile"])
 
-    d.default_system = only_suitable('default', ["udev", "bme", "back_cover", "keyboard_generic"])
+    d.default_system = only_suitable('default', ["power_udev", "bme", "back_cover", "keyboard_generic"])
 
     d.old_names = { "keyboard_generic" : "keyboard-generic" }
 

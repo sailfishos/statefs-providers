@@ -26,11 +26,11 @@ link_directories(
   ${STATEFS_UTIL_LIBRARY_DIRS}
 )
 
-add_library(provider-udev SHARED
-  provider_udev.cpp
+add_library(provider-power_udev SHARED
+  provider_power_udev.cpp
   )
 
-target_link_libraries(provider-udev
+target_link_libraries(provider-power_udev
   ${COR_LIBRARIES}
   ${UDEV_LIBRARIES}
   ${CORUDEV_LIBRARIES}
@@ -40,4 +40,4 @@ target_link_libraries(provider-udev
   ${Boost_SYSTEM_LIBRARY}
   )
 
-install(TARGETS provider-udev DESTINATION ${DST_LIB}/statefs)
+install(TARGETS provider-power_udev DESTINATION ${DST_LIB}/statefs)

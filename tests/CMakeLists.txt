@@ -3,7 +3,11 @@ include_directories(
   ${Qt5DBus_INCLUDE_DIRS}
 )
 
-set(LIBS statefs-providers-qt5 provider-upower provider-bme)
+set(LIBS statefs-providers-qt5 provider-bme)
+
+if (ENABLE_UPOWER)
+  set(LIBS ${LIBS} provider-upower)
+endif()
 
 FOREACH (LIB ${LIBS})
   add_executable(test-linking-${LIB} ${LIB}-main.cpp ${LIB}-m2.cpp)
