@@ -117,7 +117,6 @@ templates.make = '''
 %cmake -DVERSION=%{{version}} %{{?_with_multiarch:-DENABLE_MULTIARCH=ON}} {options}
 make %{{?jobs:-j%jobs}}
 make doc
-pushd inout && %cmake && popd
 '''
 
 def filter_out(prefix, data, filter_fn):

@@ -411,7 +411,6 @@ BuildArch: noarch
 %cmake -DVERSION=%{version} %{?_with_multiarch:-DENABLE_MULTIARCH=ON} -DENABLE_UPOWER=OFF
 make %{?jobs:-j%jobs}
 make doc
-pushd inout && %cmake && popd
 
 
 %install
