@@ -1,3 +1,5 @@
+%{!?cmake_install: %global cmake_install make install DESTDIR=%{buildroot}}
+
 %define ckit_version 0.7.41
 %define ckit_version1 0.7.42
 %define ckit_statefs_version 0.2.30
@@ -6,7 +8,7 @@
 %define maemo_ver1 0.7.31
 %define meego_ver 0.1.0
 %define meego_ver1 0.1.0.1
-%define statefs_ver 0.3.25
+%define statefs_ver 0.3.27
 
 Summary: Statefs providers
 Name: statefs-providers
@@ -32,8 +34,8 @@ BuildRequires: statefs >= %{statefs_ver}
 BuildRequires: pkgconfig(statefs-cpp) >= %{statefs_ver}
 BuildRequires: pkgconfig(Qt5Core)
 BuildRequires: pkgconfig(Qt5DBus)
-BuildRequires: pkgconfig(cor) >= 0.1.14
-BuildRequires: pkgconfig(qtaround-dbus) >= 0.2.0
+BuildRequires: pkgconfig(cor) >= 0.1.17
+BuildRequires: pkgconfig(qtaround-dbus) >= 0.2.4
 
 %description
 %{summary}
@@ -57,6 +59,16 @@ BuildRequires: pkgconfig(statefs-qt5) >= 0.2.47
 %description %{p_common}
 %{summary}
 
+%package doc
+Summary: Statefs providers documentation
+Group: Documenation
+BuildRequires: doxygen
+%if 0%{?_with_docs:1}
+BuildRequires: graphviz
+%endif
+%description doc
+Statefs providers documentation
+
 %package qt5-devel
 Summary: StateFS Qt5 library for providers, development files
 Group: Development/Libraries
@@ -73,7 +85,7 @@ Requires: statefs-provider-qt5 = %{version}-%{release}
 %define p_profile -n statefs-provider-profile
 %define p_keyboard_generic -n statefs-provider-keyboard-generic
 
-%define p_udev -n statefs-provider-udev
+%define p_power_udev -n statefs-provider-power-udev
 %define p_back_cover -n statefs-provider-back-cover
 
 %define p_inout_bluetooth -n statefs-provider-inout-bluetooth
@@ -94,15 +106,11 @@ Requires: statefs-provider-qt5 = %{version}-%{release}
 
 
 %build
-%cmake -DVERSION=%{version} %{?_with_multiarch:-DENABLE_MULTIARCH=ON}
-make %{?jobs:-j%jobs}
-make doc
-pushd inout && %cmake && popd
-
+@@make-all@@
 
 %install
 rm -rf %{buildroot}
-make install DESTDIR=%{buildroot}
+%cmake_install
 pushd inout && make install DESTDIR=%{buildroot} && popd
 
 @@install-default@@
@@ -116,6 +124,11 @@ rm -rf %{buildroot}
 %defattr(-,root,root,-)
 %doc README
 %{_libdir}/libstatefs-providers-qt5.so
+
+%files doc
+%defattr(-,root,root,-)
+%dir %{_datarootdir}/doc/statefs-providers
+%{_datarootdir}/doc/statefs-providers/html/*
 
 %post %{p_common} -p /sbin/ldconfig
 %postun %{p_common} -p /sbin/ldconfig

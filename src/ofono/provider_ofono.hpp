@@ -7,17 +7,18 @@
  * @par License: LGPL 2.1 http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
  */
 
-#include "manager_interface.h"
-#include "net_interface.h"
-#include "sim_interface.h"
-#include "stk_interface.h"
-#include "connectionmanager_interface.h"
-#include "connectioncontext_interface.h"
+#include "qdbusxml2cpp_manager_interface.h"
+#include "qdbusxml2cpp_net_interface.h"
+#include "qdbusxml2cpp_sim_interface.h"
+#include "qdbusxml2cpp_stk_interface.h"
+#include "qdbusxml2cpp_connectionmanager_interface.h"
+#include "qdbusxml2cpp_connectioncontext_interface.h"
 
 #include <statefs/provider.hpp>
 #include <statefs/property.hpp>
 #include <statefs/qt/ns.hpp>
 #include <qtaround/dbus.hpp>
+#include <cor/util.hpp>
 
 #include <QDBusConnection>
 #include <QString>
@@ -42,6 +43,7 @@ using qtaround::dbus::ServiceWatch;
 
 enum class Interface {
     AssistedSatelliteNavigation,
+    First_ = AssistedSatelliteNavigation,
     AudioSettings,
     CallBarring,
     CallForwarding,
@@ -64,11 +66,32 @@ enum class Interface {
     SupplementaryServices,
     TextTelephony,
     VoiceCallManager,
-
-    EOE
+    Last_ = VoiceCallManager
 };
 
-enum class SimPresent { Unknown, No, Yes, EOE };
+enum class SimPresent { Unknown, No, Yes, Last_ = Yes };
+
+enum class Property {
+    SignalStrength, First_ = SignalStrength,
+    DataTechnology,
+    RegistrationStatus,
+    Sim,
+    Status,
+    Technology,
+    SignalBars,
+    CellName,
+    NetworkName,
+    ExtendedNetworkName,
+    SubscriberIdentity,
+    CurrentMCC,
+    CurrentMNC,
+    HomeMCC,
+    HomeMNC,
+    StkIdleModeText,
+    MMSContext,
+    DataRoamingAllowed,
+    GPRSAttached, Last_ = GPRSAttached
+};
 
 struct ConnectionCache
 {
@@ -76,11 +99,13 @@ struct ConnectionCache
     QVariantMap properties;
 };
 
-typedef std::bitset<(size_t)Interface::EOE> interfaces_set_type;
+typedef std::bitset<cor::enum_size<Interface>()> interfaces_set_type;
 
 class MainNs;
+enum class State;
+using statefs::qt::PropertiesSource;
 
-class Bridge : public QObject, public statefs::qt::PropertiesSource
+class Bridge : public QObject, public PropertiesSource
 {
     Q_OBJECT
 public:
@@ -93,9 +118,9 @@ public:
     typedef std::function<void(Bridge*, QVariant const&)> property_action_type;
     typedef std::map<QString, property_action_type> property_map_type;
 
-    enum class Status {
-        Offline, Registered, Searching, Denied, Unknown, Roaming
-            , EOE
+    enum class Status { First_ = 0, Offline = First_
+            , Registered, Searching, Denied, Unknown, Roaming
+            , Last_ = Roaming
             };
 
     void set_status(Status);
@@ -107,7 +132,14 @@ public:
 
     static Status map_status(QString const&);
     static QString const & ckit_status(Status, SimPresent);
-    static QString const & ofono_status(Status status);
+    static QString const & ofono_status(Status);
+    static constexpr char const *name(Property);
+
+    template <typename T>
+    void updateProperty(Property id, T &&value)
+    {
+        PropertiesSource::updateProperty(name(id), std::forward<T>(value));
+    }
 
 private:
 
@@ -154,10 +186,18 @@ private:
     static const property_map_type connman_property_actions_;
 };
 
+using statefs::qt::Namespace;
+
 class MainNs : public statefs::qt::Namespace
 {
 public:
     MainNs(QDBusConnection &bus);
+
+    template <typename T>
+    void updateProperty(Property id, T &&value)
+    {
+        Namespace::updateProperty(Bridge::name(id), std::forward<T>(value));
+    }
 
 private:
     friend class Bridge;

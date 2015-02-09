@@ -1,3 +1,4 @@
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC TRUE)
 
 include_directories(
@@ -16,12 +17,12 @@ set(DEV_IF org.bluez.Device.xml)
 #set(ALL_IF org.bluez.all.xml)
 
 set_source_files_properties(${MGR_IF} ${ADA_IF} ${DEV_IF}
-  PROPERTIES INCLUDE common.h
+  PROPERTIES INCLUDE qdbusxml2cpp_common.h
   )
 
-qt5_add_dbus_interface(SRC ${MGR_IF} manager_interface)
-qt5_add_dbus_interface(SRC ${ADA_IF} adapter_interface)
-qt5_add_dbus_interface(SRC ${DEV_IF} device_interface)
+qt5_add_dbus_interface(SRC ${MGR_IF} qdbusxml2cpp_manager_interface)
+qt5_add_dbus_interface(SRC ${ADA_IF} qdbusxml2cpp_adapter_interface)
+qt5_add_dbus_interface(SRC ${DEV_IF} qdbusxml2cpp_device_interface)
 #qt5_add_dbus_interface(SRC ${ALL_IF} all)
 
 add_library(provider-bluez SHARED

@@ -1,3 +1,4 @@
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC TRUE)
 set(SELF profile)
 
@@ -14,14 +15,14 @@ link_directories(
 set(MAIN_IF profiled.xml)
 set(ALL_IF ${MAIN_IF})
 set_source_files_properties(${ALL_IF}
-  PROPERTIES INCLUDE dbus_types.hpp
+  PROPERTIES INCLUDE qdbusxml2cpp_dbus_types.hpp
   )
 set_source_files_properties(${ALL_IF}
   PROPERTIES NO_NAMESPACE TRUE
   )
 
 
-qt5_add_dbus_interface(SRC ${MAIN_IF} profile_interface)
+qt5_add_dbus_interface(SRC ${MAIN_IF} qdbusxml2cpp_profile_interface)
 
 add_library(provider-${SELF} SHARED
   ${SRC}

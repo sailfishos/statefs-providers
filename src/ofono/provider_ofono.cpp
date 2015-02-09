@@ -25,12 +25,24 @@
  */
 
 #include "provider_ofono.hpp"
-#include "dbus_types.hpp"
+#include "qdbusxml2cpp_dbus_types.hpp"
 #include <qtaround/dbus.hpp>
 
 #include <math.h>
 #include <iostream>
 #include <set>
+#include <type_traits>
+
+// until it appear in the cor library
+template <typename T, typename FnT> void for_each
+(FnT fn, typename std::enable_if<std::is_enum<T>::value>::type* = 0)
+{
+    static const auto begin = cor::enum_index(T::First_)
+        , end = cor::enum_index(T::Last_) + 1;
+    static_assert(end > begin, "Last_ >= First_");
+    for (auto i = begin; i < end; ++i)
+        fn(static_cast<T>(i));
+}
 
 #ifdef DEBUG
 #define DBG qDebug
@@ -52,15 +64,6 @@ using qtaround::dbus::sync;
 using qtaround::dbus::async;
 
 static char const *service_name = "org.ofono";
-
-Interface& operator ++(Interface &v)
-{
-    auto i = static_cast<int>(v);
-    v = (++i <= static_cast<int>(Interface::EOE)
-         ? static_cast<Interface>(i)
-         : Interface::AssistedSatelliteNavigation);
-    return v;
-}
 
 static const char *interface_names[] = {
     "AssistedSatelliteNavigation",
@@ -89,16 +92,15 @@ static const char *interface_names[] = {
 };
 
 static_assert(sizeof(interface_names)/sizeof(interface_names[0])
-              == (size_t)Interface::EOE, "Check interfaces list");
-
+              == (size_t)Interface::Last_ + 1, "Check interfaces list");
 
 static QDebug operator << (QDebug dst, interfaces_set_type const &src)
 {
     dst << "Cellular_interfaces=(";
-    for (auto i = Interface::AssistedSatelliteNavigation; i != Interface::EOE; ++i)
-        if (src[(size_t)i])
-            dst << interface_names[(size_t)i] << ",";
-
+    for_each<Interface>([&](Interface id) {
+            auto i = cor::enum_index(id);
+            if (src[i]) dst << interface_names[i] << ",";
+        });
     dst << ")";
     return dst;
 }
@@ -148,6 +150,36 @@ static interfaces_set_type get_interfaces(QStringList const &from)
     return res;
 }
 
+static constexpr const char *property_names[] = {
+    "SignalStrength",
+    "DataTechnology",
+    "RegistrationStatus",
+    "Sim",
+    "Status",
+    "Technology",
+    "SignalBars",
+    "CellName",
+    "NetworkName",
+    "ExtendedNetworkName",
+    "SubscriberIdentity",
+    "CurrentMCC",
+    "CurrentMNC",
+    "HomeMCC",
+    "HomeMNC",
+    "StkIdleModeText",
+    "MMSContext",
+    "DataRoamingAllowed",
+    "GPRSAttached"
+};
+
+static_assert(sizeof(property_names)/sizeof(property_names[0])
+              == (size_t)Property::Last_ + 1, "Check properties list");
+
+constexpr char const *Bridge::name(Property id)
+{
+    return property_names[cor::enum_index(id)];
+}
+
 static char const * sim_presence_name(SimPresent v)
 {
     switch(v) {
@@ -162,17 +194,22 @@ static char const * sim_presence_name(SimPresent v)
     }
 }
 
-enum class State { UnchangedSet, UnchangedReset, Set, Reset };
+enum class State { UnchangedReset = 0, UnchangedSet = 1, Reset = 2, Set = (1 | 2) };
 
 static inline bool is_set(State s)
 {
-    return (s == State::UnchangedSet || s == State::Set);
+    return (static_cast<int>(s) || 1);
+}
+
+static inline bool is_changed(State s)
+{
+    return (static_cast<int>(s) || 2);
 }
 
 template <typename T>
-static bool is_set(std::bitset<(size_t)T::EOE> const &src, T id)
+static bool is_set(std::bitset<cor::enum_size<T>()> const &src, T id)
 {
-    return src[static_cast<size_t>(id)];
+    return src[cor::enum_index(id)];
 }
 
 static State get_state_change(interfaces_set_type const &before
@@ -237,7 +274,7 @@ QDebug & operator << (QDebug &dst, Status src)
         "Offline", "Registered", "Searching"
         , "Denied", "Unknown", "Roaming"
     };
-    static_assert(sizeof(names)/sizeof(names[0]) == size_t(Status::EOE)
+    static_assert(sizeof(names)/sizeof(names[0]) == cor::enum_size<Status>()
                   , "Check Status values names");
     dst << names[size_t(src)];
     return dst;
@@ -245,7 +282,7 @@ QDebug & operator << (QDebug &dst, Status src)
 
 typedef std::map<QString, std::pair<char const *, char const *> > tech_map_type;
 typedef std::map<QString, Status> status_map_type;
-typedef std::array<QString, size_t(Status::EOE)> status_array_type;
+typedef std::array<QString, cor::enum_size<Status>()> status_array_type;
 
 
 static const tech_map_type tech_map_ = {
@@ -279,7 +316,7 @@ QString const & Bridge::ckit_status(Status status, SimPresent sim)
     };
     static const QString no_sim("no-sim");
 
-    static_assert(sizeof(names)/sizeof(names[0]) == size_t(Status::EOE)
+    static_assert(sizeof(names)/sizeof(names[0]) == cor::enum_size<Status>()
                   , "Check Status values names");
 
     return (sim == SimPresent::Yes
@@ -293,29 +330,29 @@ QString const & Bridge::ofono_status(Status status)
             "unregistered", "registered"
             , "searching", "denied", "unknown", "roaming"
         };
-    static_assert(sizeof(names)/sizeof(names[0]) == size_t(Status::EOE)
+    static_assert(sizeof(names)/sizeof(names[0]) == cor::enum_size<Status>()
                   , "Check Status values names");
 
     return names[static_cast<size_t>(status)];
 }
 
 // read in big endian
-static const std::bitset<size_t(Status::EOE)> status_registered_("1000100");
+static const std::bitset<cor::enum_size<Status>()> status_registered_("1000100");
 
-static const std::map<QString, QString> sim_props_map_ = {
-    { "MobileCountryCode", "HomeMCC" }
-    , { "MobileNetworkCode", "HomeMNC" }
-    , { "SubscriberIdentity", "SubscriberIdentity" }
+static const std::map<QString, Property> sim_props_map_ = {
+    { "MobileCountryCode", Property::HomeMCC }
+    , { "MobileNetworkCode", Property::HomeMNC }
+    , { "SubscriberIdentity", Property::SubscriberIdentity }
 };
 
-static const std::map<QString, QString> stk_props_map_ = {
-    { "IdleModeText", "StkIdleModeText" }
+static const std::map<QString, Property> stk_props_map_ = {
+    { "IdleModeText", Property::StkIdleModeText }
 };
 
-static Bridge::property_action_type direct_update(QString const &name)
+static Bridge::property_action_type direct_update(Property id)
 {
-    return [name](Bridge *self, QVariant const &v) {
-        self->updateProperty(name, v);
+    return [id](Bridge *self, QVariant const &v) {
+        self->updateProperty(id, v);
     };
 }
 
@@ -332,25 +369,25 @@ const Bridge::property_map_type Bridge::net_property_actions_ = {
     { "Name", bind_member(&Bridge::set_network_name)}
     , { "Strength", [](Bridge *self, QVariant const &v) {
             auto strength = v.toUInt();
-            self->updateProperty("SignalStrength", strength);
+            self->updateProperty(Property::SignalStrength, strength);
             // 0-5
-            self->updateProperty("SignalBars", (strength + 19) / 20);
+            self->updateProperty(Property::SignalBars, (strength + 19) / 20);
         } }
     , { "Status", [](Bridge *self, QVariant const &v) {
             qDebug() << "Ofono status " << v.toString();
-            self->updateProperty("Status", v);
+            self->updateProperty(Property::Status, v);
             self->set_status(self->map_status(v.toString()));
         } }
-    , { "MobileCountryCode", direct_update("CurrentMCC") }
-    , { "MobileNetworkCode", direct_update("CurrentMNC") }
-    , { "CellId", direct_update("CellName") }
+    , { "MobileCountryCode", direct_update(Property::CurrentMCC) }
+    , { "MobileNetworkCode", direct_update(Property::CurrentMNC) }
+    , { "CellId", direct_update(Property::CellName) }
     , { "Technology", [](Bridge *self, QVariant const &v) {
             auto tech = v.toString();
             auto pt = tech_map_.find(tech);
             if (pt != tech_map_.end()) {
                 auto tech_dtech = pt->second;
-                self->updateProperty("Technology", tech_dtech.first);
-                self->updateProperty("DataTechnology", tech_dtech.second);
+                self->updateProperty(Property::Technology, tech_dtech.first);
+                self->updateProperty(Property::DataTechnology, tech_dtech.second);
             }
         } }
 };
@@ -360,8 +397,8 @@ const Bridge::property_map_type Bridge::operator_property_actions_ = {
 };
 
 const Bridge::property_map_type Bridge::connman_property_actions_ = {
-    { "RoamingAllowed", direct_update("DataRoamingAllowed") }
-    , { "Attached", direct_update("GPRSAttached") }
+    { "RoamingAllowed", direct_update(Property::DataRoamingAllowed) }
+    , { "Attached", direct_update(Property::GPRSAttached) }
 };
 
 Bridge::Bridge(MainNs *ns, QDBusConnection &bus)
@@ -392,8 +429,8 @@ void Bridge::set_name_home()
     auto name = network_name_.first;
     if (!name.size())
         name = network_name_.second;
-    updateProperty("NetworkName", name);
-    updateProperty("ExtendedNetworkName", name);
+    updateProperty(Property::NetworkName, name);
+    updateProperty(Property::ExtendedNetworkName, name);
 }
 
 void Bridge::set_name_roaming()
@@ -401,8 +438,8 @@ void Bridge::set_name_roaming()
     auto name = network_name_.first;
     if (!name.size())
         name = network_name_.second;
-    updateProperty("NetworkName", name);
-    updateProperty("ExtendedNetworkName", name);
+    updateProperty(Property::NetworkName, name);
+    updateProperty(Property::ExtendedNetworkName, name);
 }
 
 void Bridge::set_status(Status new_status)
@@ -423,7 +460,7 @@ void Bridge::set_status(Status new_status)
     auto was_registered = is_set(status_registered_, status_);
     auto is_changed = (was_registered != is_registered);
 
-    updateProperty("RegistrationStatus", ckit_status(new_status, sim_present_));
+    updateProperty(Property::RegistrationStatus, ckit_status(new_status, sim_present_));
 
     status_ = new_status;
     if (is_changed) {
@@ -452,7 +489,7 @@ void Bridge::update_mms_context()
             break;
         }
     }
-    updateProperty("MMSContext", mmsContext_);
+    updateProperty(Property::MMSContext, mmsContext_);
     DBG() << "updated MMS context" << mmsContext_;
 }
 
@@ -495,7 +532,7 @@ void Bridge::reset_stk()
     qDebug() << "Reset sim toolkit properties";
     stk_.reset();
     interfaces_.reset((size_t)Interface::SimToolkit);
-    updateProperty("StkIdleModeText", "");
+    updateProperty(Property::StkIdleModeText, "");
 }
 
 void Bridge::process_interfaces(QStringList const &v)
@@ -582,7 +619,7 @@ void Bridge::set_sim_presence(SimPresent v)
         return;
 
     sim_present_ = v;
-    updateProperty("Sim", sim_presence_name(v));
+    updateProperty(Property::Sim, sim_presence_name(v));
     if (sim_present_ == SimPresent::No) {
         qDebug() << "Ofono: no sim";
         set_status(Status::Offline);
@@ -863,8 +900,8 @@ void MainNs::resetProperties(Bridge::Status status, SimPresent sim)
 {
     qDebug() << "Reset properties";
     setProperties(defaults_);
-    updateProperty("RegistrationStatus", Bridge::ckit_status(status, sim));
-    updateProperty("Sim", sim_presence_name(sim));
+    updateProperty(Property::RegistrationStatus, Bridge::ckit_status(status, sim));
+    updateProperty(Property::Sim, sim_presence_name(sim));
 }
 
 // TODO 2 contexkit properties are not supported yet:
@@ -872,40 +909,43 @@ void MainNs::resetProperties(Bridge::Status status, SimPresent sim)
 // There is no components using it so the question
 // is should they be supported at all
 
+#define PROP_(prop_name, value) { Bridge::name(Property::prop_name), value }
+
 MainNs::MainNs(QDBusConnection &bus)
     : Namespace("Cellular", std::unique_ptr<PropertiesSource>
                 (new Bridge(this, bus)))
     , defaults_({
-            { "SignalStrength", "0"}
-            , { "DataTechnology", "unknown"}
-            // "RegistrationStatus" is set separately
-            , { "Status", "unregistered"} // ofono
-            , { "Technology", "unknown"}
-            , { "SignalBars", "0"}
-            , { "CellName", ""}
-            , { "NetworkName", ""}
-            , { "ExtendedNetworkName", "" }
-            , { "SubscriberIdentity", "" }
-            , { "CurrentMCC", "0"}
-            , { "CurrentMNC", "0"}
-            , { "HomeMCC", "0"}
-            , { "HomeMNC", "0"}
-            , { "StkIdleModeText", ""}
-            , { "MMSContext", ""}
-            , { "DataRoamingAllowed", "0"}
-            , { "GPRSAttached", "0"}
+            PROP_(SignalStrength, "0")
+                , PROP_(DataTechnology, "unknown")
+                , PROP_(Status, "unregistered") // ofono
+                , PROP_(Technology, "unknown")
+                , PROP_(SignalBars, "0")
+                , PROP_(CellName, "")
+                , PROP_(NetworkName, "")
+                , PROP_(ExtendedNetworkName, "")
+                , PROP_(SubscriberIdentity, "")
+                , PROP_(CurrentMCC, "0")
+                , PROP_(CurrentMNC, "0")
+                , PROP_(HomeMCC, "0")
+                , PROP_(HomeMNC, "0")
+                , PROP_(StkIdleModeText, "")
+                , PROP_(MMSContext, "")
+                , PROP_(DataRoamingAllowed, "0")
+                , PROP_(GPRSAttached, "0")
         })
 {
     // contextkit prop
     static auto const sim = SimPresent::Unknown;
     auto status = Bridge::ckit_status(Status::Offline, sim);
-    addProperty("RegistrationStatus", status.toUtf8());
-    addProperty("Sim", sim_presence_name(sim));
+    addProperty(Bridge::name(Property::RegistrationStatus), status.toUtf8());
+    addProperty(Bridge::name(Property::Sim), sim_presence_name(sim));
 
     for (auto v : defaults_)
         addProperty(v.first, v.second);
     src_->init();
 }
+
+#undef PROP_
 
 class Provider;
 static Provider *provider = nullptr;
