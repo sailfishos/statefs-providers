@@ -73,6 +73,7 @@ class BackCoverMonitor {
 public:
     BackCoverMonitor(statefs::AProperty *parent);
 
+    int open(int);
     int getattr() const;
     ssize_t size() const;
     bool connect(statefs_slot *slot);
@@ -188,7 +189,7 @@ int BackCoverMonitor::findDevice()
             throw;
         }
 
-        int fd = open(s.str().c_str(), O_RDONLY);
+        int fd = ::open(s.str().c_str(), O_RDONLY);
         if (fd == -1) {
             std::cerr << "Failed to check " << entry->d_name << std::endl;
             continue;
@@ -207,6 +208,11 @@ int BackCoverMonitor::findDevice()
     std::cerr << "Could not find toh event device" << std::endl;
 
     return -1;
+}
+
+int BackCoverMonitor::open(int flags)
+{
+    return (flags & (O_WRONLY | O_TRUNC)) ? -EINVAL : 0;
 }
 
 int BackCoverMonitor::getattr() const
