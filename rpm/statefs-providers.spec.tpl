@@ -8,7 +8,7 @@
 %define maemo_ver1 0.7.31
 %define meego_ver 0.1.0
 %define meego_ver1 0.1.0.1
-%define statefs_ver 0.3.27
+%define statefs_ver 0.3.28
 
 Summary: Statefs providers
 Name: statefs-providers
