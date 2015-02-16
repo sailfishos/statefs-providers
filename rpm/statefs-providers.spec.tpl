@@ -15,7 +15,7 @@ Name: statefs-providers
 Version: x.x.x
 Release: 1
 License: LGPLv2
-Group: System Environment/Libraries
+Group: System/Libraries
 URL: http://github.com/nemomobile/statefs-providers
 Source0: %{name}-%{version}.tar.bz2
 Source1: generate-spec.py
@@ -48,7 +48,7 @@ BuildRequires: pkgconfig(qtaround-dbus) >= 0.2.4
 
 %package %{p_common}
 Summary: Package to replace contextkit plugins
-Group: System Environment/Libraries
+Group: System/Libraries
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 Requires: statefs >= %{statefs_ver}
