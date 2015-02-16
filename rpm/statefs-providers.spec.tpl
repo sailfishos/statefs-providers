@@ -28,6 +28,9 @@ Source7: qt5_user-providers.spec.tpl
 Source8: statefs-providers.spec.tpl
 Source9: default_system-providers.spec.tpl
 Source10: default-install.spec.tpl
+Source11: SpecGenerator.py
+Source12: README
+Source13: generate-spec-opensuse-generic.py
 
 BuildRequires: cmake >= 2.8
 BuildRequires: statefs >= %{statefs_ver}
