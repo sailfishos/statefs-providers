@@ -4,11 +4,11 @@
  * Copyright (C) 2013 0x7DD.
  * Contact: Andrey Kozhevnikov <coderusinbox@gmail.com>
  *
- * Copyright (C) 2013 Jolla Ltd.
+ * Copyright (C) 2013, 2015 Jolla Ltd.
  * Contact: Denis Zalevskiy <denis.zalevskiy@jollamobile.com>
  *
  * Copyright (C) 2010 Nokia Corporation.
- * Contact: Marius Vollmer marius.vollmer@nokia.com 
+ * Contact: Marius Vollmer marius.vollmer@nokia.com
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -70,14 +70,14 @@ BatteryNs::BatteryNs() : Namespace("Battery")
     }
 
     memset(ufds, 0 , sizeof(ufds));
-    
+
     exiting = false;
 
     exit_handler = eventfd(0, 0);
     if (exit_handler >= 0) {
         ufds[1].fd = exit_handler;
         ufds[1].events = POLLIN;
-        
+
         initialize_bme();
 
         start_listening();
@@ -130,7 +130,7 @@ void BatteryNs::start_listening()
             rv = poll(ufds, 2, -1);
             if (rv < 0) {
                 std::cerr << "poll error\n";
-                
+
                 ::usleep(10000000);
                 initialize_bme();
             } else if (rv == 0) {
@@ -186,14 +186,21 @@ bool BatteryNs::readBatteryValues()
         return false;
     }
 
-    bool _isCharging = st[bme_stat_charger_state] == bme_charging_state_started
-                       && st[bme_stat_bat_state] != bme_bat_state_full;
+    bme_bat_state bat_state = (bme_bat_state)st[bme_stat_bat_state];
+    bme_charging_state charging_state =
+        (bme_charging_state)st[bme_stat_charging_state];
+    if (bat_state > bme_bat_state_err)
+        bat_state = bme_bat_state_err;
+    bme_charger_state charger_state = (bme_charger_state)st[bme_stat_charger_state];
+
+    bool _isCharging = charging_state == bme_charging_state_started
+                       && bat_state != bme_bat_state_full;
     set(Prop::IsCharging, statefs_attr(_isCharging));
 
-    bool _onBattery = st[bme_stat_charger_state] != bme_charger_state_connected;
+    bool _onBattery = charger_state != bme_charger_state_connected;
     set(Prop::OnBattery, statefs_attr(_onBattery));
 
-    bool _lowBattery = st[bme_stat_bat_state] == bme_bat_state_low;
+    bool _lowBattery = bat_state == bme_bat_state_low;
     set(Prop::LowBattery, statefs_attr(_lowBattery));
 
     int cp = st[bme_stat_bat_pct_remain];
@@ -205,23 +212,26 @@ bool BatteryNs::readBatteryValues()
     } else {
         set(Prop::ChargeBars, statefs_attr(0));
     }
-    
-    char const *state = "unknown";    
+
+    char const *state = "unknown";
     if (_isCharging) {
         state = "charging";
     } else {
-        switch (st[bme_stat_bat_state]) {
-           case bme_bat_state_empty:
-                state = "empty";
-                break;
-           case bme_bat_state_low:
-           case bme_bat_state_ok:
-                state = "discharging";
-                break;
-           case bme_bat_state_full:
-                state = "full";
-                break;
-           }
+        switch (bat_state) {
+        case bme_bat_state_empty:
+            state = "empty";
+            break;
+        case bme_bat_state_low:
+        case bme_bat_state_ok:
+            state = "discharging";
+            break;
+        case bme_bat_state_full:
+            state = "full";
+            break;
+        case bme_bat_state_err:
+            // use default value 
+            break;
+        }
     }
     set(Prop::State, state);
 
