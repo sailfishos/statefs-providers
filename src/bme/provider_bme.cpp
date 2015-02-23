@@ -56,6 +56,9 @@ const BatteryNs::info_type BatteryNs::info = {{
     , make_tuple("TimeUntilFull", "0")
     , make_tuple("IsCharging", "0")
     , make_tuple("State", "unknown")
+    , make_tuple("Level", "unknown")
+    , make_tuple("ChargerType", "")
+    , make_tuple("ChargingState", "unknown")
 }};
 
 BatteryNs::BatteryNs() : Namespace("Battery")
@@ -196,6 +199,35 @@ bool BatteryNs::readBatteryValues()
     bool _isCharging = charging_state == bme_charging_state_started
                        && bat_state != bme_bat_state_full;
     set(Prop::IsCharging, statefs_attr(_isCharging));
+
+    static char const *level_names[] = {
+        "empty", "low", "normal", "full", "unknown"
+    };
+    static_assert(ARRAY_SIZE(level_names) - 1 == bme_bat_state_err
+                  , "Compare level_names and bme_bat_state");
+    set(Prop::Level, level_names[bat_state]);
+    char const *charging_state_name =
+        (charger_state != bme_charger_state_connected
+         ? ""
+         : (charging_state == bme_charging_state_err
+            ? "unknown"
+            : (bat_state == bme_bat_state_full
+               ? "idle"
+               : (charging_state != bme_charging_state_stopped
+                  ? "charging"
+                  : "discharging"))));
+    set(Prop::ChargingState, charging_state_name);
+
+    static char const *charger_names[] = {
+        "", "sdp", "sdp", "dcp", "dcp", "cdp", "unknown"
+    };
+    static_assert(ARRAY_SIZE(charger_names) - 1 == bme_charger_unknown
+                  , "Compare charger_names and bme_charger");
+    bme_charger charger = (bme_charger)st[bme_stat_charger_type];
+    if (charger > bme_charger_unknown)
+        charger = bme_charger_unknown;
+    set(Prop::ChargerType, (charger_state != bme_charger_state_connected
+                            ? "" : charger_names[charger]));
 
     bool _onBattery = charger_state != bme_charger_state_connected;
     set(Prop::OnBattery, statefs_attr(_onBattery));

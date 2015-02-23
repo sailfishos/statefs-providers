@@ -75,6 +75,16 @@ typedef enum {
 } bme_bat_state;
 
 typedef enum {
+    bme_charger_no = 0,
+    bme_charger_sdp_100,
+    bme_charger_sdp_500,
+    bme_charger_dcp,
+    bme_charger_dynamo,
+    bme_charger_cdp,
+    bme_charger_unknown
+} bme_charger;
+
+typedef enum {
     bme_charger_state_disconnected = 0,
     bme_charger_state_connected,
     bme_charger_state_err
