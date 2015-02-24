@@ -34,7 +34,7 @@
 
 #ifndef COMPILE_TIME_ASSERT
 #define COMPILE_TIME_ASSERT(cond, err_msg)      \
-	typedef char ERROR_##err_msg[42/(!!(cond))]
+	typedef char ERROR_##err_msg[42/(!!(cond))] __attribute__((unused))
 #endif
 
 
