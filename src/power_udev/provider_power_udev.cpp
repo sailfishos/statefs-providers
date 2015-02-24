@@ -5,6 +5,7 @@
 #include <time.h>
 #include <queue>
 #include <stdlib.h>
+#include <chrono>
 
 #include <boost/asio.hpp>
 #include <boost/asio/posix/basic_descriptor.hpp>
@@ -16,6 +17,7 @@
 #include <cor/udev.hpp>
 #include <cor/error.hpp>
 #include <cor/trace.hpp>
+
 
 template <typename T>
 class ChangingValue
@@ -131,6 +133,23 @@ using statefs::PropertyStatus;
 namespace statefs { namespace udev {
 
 static cor::debug::Log log{"statefs_udev", std::cerr};
+
+struct MeasureTime {
+    MeasureTime(std::string const &name)
+        : begin_(std::chrono::system_clock::now())
+        , name_(name)
+    {}
+    ~MeasureTime()
+    {
+        auto end = std::chrono::system_clock::now();
+        auto dt = std::chrono::duration_cast<std::chrono::microseconds>
+            (end - begin_).count();
+        log.critical("TIME:", name_, ":", dt);
+    }
+    decltype(std::chrono::system_clock::now()) begin_;
+    std::string name_;
+};
+
 
 std::string env_get(std::string const &name, std::string const &def_val)
 {
@@ -517,7 +536,7 @@ public:
 
     typedef std::map<Prop, BasicSource::source_type> analog_info_type;
 
-    BatteryNs();
+    BatteryNs(statefs_provider_mode);
 
     virtual ~BatteryNs() {
         io_.stop();
@@ -684,7 +703,8 @@ public:
     Provider(statefs_server *server)
         : AProvider("udev", server)
     {
-        auto ns = std::make_shared<BatteryNs>();
+        auto ns = std::make_shared<BatteryNs>
+            (server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
     virtual ~Provider() {}
@@ -887,9 +907,9 @@ void BatteryInfo::on_charging_changed(ChargingState)
     denergy_.clear();
 }
 
-BatteryNs::BatteryNs()
+BatteryNs::BatteryNs(statefs_provider_mode mode)
     : Namespace("Battery")
-    , mon_(new Monitor(io_, this))
+    , mon_(mode == statefs_provider_mode_run ? new Monitor(io_, this) : nullptr)
     , analog_info_{{
         // BatteryNs::Prop::Temperature, mon_->temperature_source()
             }}
@@ -916,8 +936,10 @@ BatteryNs::BatteryNs()
             *this << prop;
         }
     }
-    mon_->run();
-    monitor_thread_ = cor::make_unique<std::thread>([this]() { io_.run(); });
+    if (mon_) {
+        mon_->run();
+        monitor_thread_ = cor::make_unique<std::thread>([this]() { io_.run(); });
+    }
 }
 
 void BatteryNs::set(Prop id, std::string const &v)
@@ -1225,7 +1247,9 @@ void Monitor::monitor_timer()
     };
 
     timer_status_ = TimerStatus::Scheduled;
-    timer_.expires_from_now(boost::posix_time::seconds(dtimer_sec_));
+    static auto ms = boost::posix_time::milliseconds(env_get("STATEFS_TMP_INTERVAL", 1000));
+    timer_.expires_from_now(ms); // TODO TMP REMOVE
+                            // boost::posix_time::seconds(dtimer_sec_));
     timer_.async_wait(wrapper);
 }
 
