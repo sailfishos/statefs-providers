@@ -433,7 +433,6 @@ out:
 bme_xchg_t bme_xchg_open()
 {
     int h, rc;
-    struct bme_xchg *xchg = NULL;
     bme_xchg_t desc;
 
     h = inotify_init();
@@ -499,6 +498,5 @@ int bme_xchg_read(bme_xchg_t h)
         else
             state_mask = BME_EV_ERR;
     }
-out:
     return state_mask;
 }

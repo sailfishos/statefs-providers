@@ -34,7 +34,7 @@
 
 #ifndef COMPILE_TIME_ASSERT
 #define COMPILE_TIME_ASSERT(cond, err_msg)      \
-	typedef char ERROR_##err_msg[42/(!!(cond))]
+	typedef char ERROR_##err_msg[42/(!!(cond))] __attribute__((unused))
 #endif
 
 
@@ -73,6 +73,16 @@ typedef enum {
     bme_bat_state_full,
     bme_bat_state_err,
 } bme_bat_state;
+
+typedef enum {
+    bme_charger_no = 0,
+    bme_charger_sdp_100,
+    bme_charger_sdp_500,
+    bme_charger_dcp,
+    bme_charger_dynamo,
+    bme_charger_cdp,
+    bme_charger_unknown
+} bme_charger;
 
 typedef enum {
     bme_charger_state_disconnected = 0,

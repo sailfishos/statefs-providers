@@ -5,6 +5,7 @@
 #include <time.h>
 #include <queue>
 #include <stdlib.h>
+#include <chrono>
 
 #include <boost/asio.hpp>
 #include <boost/asio/posix/basic_descriptor.hpp>
@@ -16,6 +17,7 @@
 #include <cor/udev.hpp>
 #include <cor/error.hpp>
 #include <cor/trace.hpp>
+
 
 template <typename T>
 class ChangingValue
@@ -131,6 +133,23 @@ using statefs::PropertyStatus;
 namespace statefs { namespace udev {
 
 static cor::debug::Log log{"statefs_udev", std::cerr};
+
+struct MeasureTime {
+    MeasureTime(std::string const &name)
+        : begin_(std::chrono::system_clock::now())
+        , name_(name)
+    {}
+    ~MeasureTime()
+    {
+        auto end = std::chrono::system_clock::now();
+        auto dt = std::chrono::duration_cast<std::chrono::microseconds>
+            (end - begin_).count();
+        log.critical("TIME:", name_, ":", dt);
+    }
+    decltype(std::chrono::system_clock::now()) begin_;
+    std::string name_;
+};
+
 
 std::string env_get(std::string const &name, std::string const &def_val)
 {
@@ -341,6 +360,11 @@ public:
             energy_now_time.set(::time(nullptr));
     }
 
+    long energy_full() const
+    {
+        return energy_full_;
+    }
+
 private:
 
     void calculate_power_limits()
@@ -459,6 +483,12 @@ public:
      *
      * - ChargePercentage [0, 100] - battery charge percentage
      *
+     * - Capacity (double, [0, 100]) - current battery capacity
+     *
+     * - Energy (integer, uWh) - current battery energy
+     *
+     * - EnergyFull (integer, uWh) - battery energy when it was full
+     *
      * - OnBattery [0, 1] - is charger disconnected
      *
      * - IsCharging [0, 1] - is battery charging and not full yet
@@ -472,7 +502,7 @@ public:
      *
      * - Temperature (integer, °C * 10) - battery zone temperature if provided
      *
-     * - Power (integer, mW) - average power consumed during several
+     * - Power (integer, uW) - average power consumed during several
      *   last measurements (positive - charging)
      *
      * - State (deprecated, string) [unknown, charging, discharging, full, low,
@@ -482,11 +512,15 @@ public:
      *
      * - Current (uA) - battery current (positive - charging)
      *
-     * - ChargerType (string) [usb, dcp, unknown] - charger type ("" - if
-     *   absent)
+     * - ChargerType (string) [usb, dcp, cdp, unknown] - charger type
+     *   ("" - if absent)
+     *
+     * - Level - (string) [unknown, normal, low, empty] - battery level
      */
     enum class Prop {
-        ChargePercentage, Capacity, OnBattery, LowBattery
+        ChargePercentage, Capacity
+            , Energy, EnergyFull
+            , OnBattery, LowBattery
             , TimeUntilLow, TimeUntilFull, IsCharging, Temperature
             , Power, State, Voltage, Current, Level
             , ChargerType, ChargingState
@@ -502,7 +536,7 @@ public:
 
     typedef std::map<Prop, BasicSource::source_type> analog_info_type;
 
-    BatteryNs();
+    BatteryNs(statefs_provider_mode);
 
     virtual ~BatteryNs() {
         io_.stop();
@@ -643,6 +677,8 @@ std::tuple<typename T::handle_ptr, statefs::setter_type> make_prop(T const &t)
 const BatteryNs::info_type BatteryNs::info = {{
         make_tuple("ChargePercentage", "42", PType::Discrete)
         , make_tuple("Capacity", "42", PType::Discrete)
+        , make_tuple("Energy", "42", PType::Discrete)
+        , make_tuple("EnergyFull", "42", PType::Discrete)
         , make_tuple("OnBattery", "1", PType::Discrete)
         , make_tuple("LowBattery", "0", PType::Discrete)
         , make_tuple("TimeUntilLow", "7117", PType::Discrete)
@@ -667,7 +703,8 @@ public:
     Provider(statefs_server *server)
         : AProvider("udev", server)
     {
-        auto ns = std::make_shared<BatteryNs>();
+        auto ns = std::make_shared<BatteryNs>
+            (server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
     virtual ~Provider() {}
@@ -780,22 +817,24 @@ void BatteryInfo::set_denergy_now(long de)
         calculate_power_limits();
         log.debug("dEavg=", de);
         // hour - 3600s
-        auto et = de < 0 ? - enow / de * 360 / 100 : 0;
+        auto et = de < 0 ? - enow / de * 36 / 10 : 0;
         time_to_low.set(et);
         time_to_full.set(0);
     } else {
         de = denergy_.average();
         // hour - 3600s
-        auto et = de > 0 ? (energy_full_ - enow) / de * 360 / 100 : 0;
+        auto et = de > 0 ? (energy_full_ - enow) / de * 36 / 10 : 0;
         time_to_low.set(0);
         time_to_full.set(et);
     }
-    power.set(-de);
+    power.set(-de * 1000); // mW -> uW
 }
 
 void BatteryInfo::update(udevpp::Device &&from_dev)
 {
-    if (!dev_ || *dev_ != from_dev) {
+    if (!dev_
+        || *dev_ != from_dev
+        || attr<long>(dev_->attr("energy_full")) != energy_full_) {
         log.info("Setup new battery ", from_dev.path());
         if (dev_)
             log.warning("Instead of previous battery ", dev_->path());
@@ -868,9 +907,9 @@ void BatteryInfo::on_charging_changed(ChargingState)
     denergy_.clear();
 }
 
-BatteryNs::BatteryNs()
+BatteryNs::BatteryNs(statefs_provider_mode mode)
     : Namespace("Battery")
-    , mon_(new Monitor(io_, this))
+    , mon_(mode == statefs_provider_mode_run ? new Monitor(io_, this) : nullptr)
     , analog_info_{{
         // BatteryNs::Prop::Temperature, mon_->temperature_source()
             }}
@@ -897,8 +936,10 @@ BatteryNs::BatteryNs()
             *this << prop;
         }
     }
-    mon_->run();
-    monitor_thread_ = cor::make_unique<std::thread>([this]() { io_.run(); });
+    if (mon_) {
+        mon_->run();
+        monitor_thread_ = cor::make_unique<std::thread>([this]() { io_.run(); });
+    }
 }
 
 void BatteryNs::set(Prop id, std::string const &v)
@@ -1102,6 +1143,8 @@ void Monitor::notify(bool is_initial)
 
     set<P::Capacity>(battery_.capacity_from_energy, is_initial);
     set<P::ChargePercentage>(battery_.capacity, is_initial);
+    set<P::Energy>(battery_.energy_now, is_initial);
+    set_battery_prop<P::EnergyFull>(battery_.energy_full());
     set<P::OnBattery>(charging_.charger_type, get_on_battery, is_initial);
     set<P::TimeUntilLow>(battery_.time_to_low, is_initial);
     set<P::TimeUntilFull>(battery_.time_to_full, is_initial);
@@ -1204,7 +1247,9 @@ void Monitor::monitor_timer()
     };
 
     timer_status_ = TimerStatus::Scheduled;
-    timer_.expires_from_now(boost::posix_time::seconds(dtimer_sec_));
+    static auto ms = boost::posix_time::milliseconds(env_get("STATEFS_TMP_INTERVAL", 1000));
+    timer_.expires_from_now(ms); // TODO TMP REMOVE
+                            // boost::posix_time::seconds(dtimer_sec_));
     timer_.async_wait(wrapper);
 }
 

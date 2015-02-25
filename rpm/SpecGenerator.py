@@ -19,7 +19,7 @@ templates = Templates()
 templates.package_qt5 = '''
 %package -n {name}
 Summary: Statefs provider{summary}
-Group: System Environment/Libraries
+Group: System/Libraries
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 Requires: %{{n_common}} = %{{version}}-%{{release}}
@@ -36,7 +36,7 @@ Requires: statefs-loader-qt5 >= 0.0.9
 templates.package_default = '''
 %package -n {name}
 Summary: Statefs provider{summary}
-Group: System Environment/Libraries
+Group: System/Libraries
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 {extra}
@@ -51,7 +51,7 @@ Requires(postun): /sbin/ldconfig
 templates.package_inout = '''
 %package -n {name}
 Summary: Statefs inout provider{summary}
-Group: System Environment/Libraries
+Group: System/Libraries
 Requires: statefs >= %{{statefs_ver}}
 {extra}
 {obsoletes}
