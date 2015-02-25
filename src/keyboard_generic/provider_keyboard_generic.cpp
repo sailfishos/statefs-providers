@@ -67,7 +67,7 @@ enum class KeyboardProp {
 class KeyboardNs : public BasicNamespace<KeyboardProp>
 {
 public:
-    KeyboardNs();
+    KeyboardNs(statefs_provider_mode);
     ~KeyboardNs();
     virtual void release() { }
 
@@ -131,9 +131,12 @@ void Monitor::run()
     async_read_();
 }
 
-KeyboardNs::KeyboardNs()
+KeyboardNs::KeyboardNs(statefs_provider_mode mode)
     : BasicNamespace<KeyboardProp>("maemo_InternalKeyboard")
 {
+    if (mode == statefs_provider_mode_dump)
+        return;
+
     using namespace std::placeholders;
     auto fn = std::bind(&KeyboardNs::on_input_device, this, _1);
     mon_ = cor::make_unique<Monitor>(io_, root_, "input", fn);
@@ -181,7 +184,8 @@ public:
     Provider(statefs_server *server)
         : AProvider("udev-keyboard", server)
     {
-        auto ns = std::make_shared<KeyboardNs>();
+        auto ns = std::make_shared<KeyboardNs>
+            (server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
 
