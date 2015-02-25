@@ -517,7 +517,7 @@ public:
 
     typedef std::map<Prop, BasicSource::source_type> analog_info_type;
 
-    BatteryNs();
+    BatteryNs(statefs_provider_mode);
 
     virtual ~BatteryNs() {
         io_.stop();
@@ -684,7 +684,8 @@ public:
     Provider(statefs_server *server)
         : AProvider("udev", server)
     {
-        auto ns = std::make_shared<BatteryNs>();
+        auto ns = std::make_shared<BatteryNs>
+            (server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
     virtual ~Provider() {}
@@ -887,9 +888,9 @@ void BatteryInfo::on_charging_changed(ChargingState)
     denergy_.clear();
 }
 
-BatteryNs::BatteryNs()
+BatteryNs::BatteryNs(statefs_provider_mode mode)
     : Namespace("Battery")
-    , mon_(new Monitor(io_, this))
+    , mon_(mode == statefs_provider_mode_run ? new Monitor(io_, this) : nullptr)
     , analog_info_{{
         // BatteryNs::Prop::Temperature, mon_->temperature_source()
             }}
@@ -916,8 +917,10 @@ BatteryNs::BatteryNs()
             *this << prop;
         }
     }
-    mon_->run();
-    monitor_thread_ = cor::make_unique<std::thread>([this]() { io_.run(); });
+    if (mon_) {
+        mon_->run();
+        monitor_thread_ = cor::make_unique<std::thread>([this]() { io_.run(); });
+    }
 }
 
 void BatteryNs::set(Prop id, std::string const &v)
