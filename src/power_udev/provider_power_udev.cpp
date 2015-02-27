@@ -259,12 +259,24 @@ static const long energy_full_default = 2200 * 3800;
 // mA * mV / (sec per hour)
 static const long denergy_max_default = 2000 * 3800 / 3600;
 
+// uV
+static const long reasonable_battery_voltage_min = 1200000; // NiCd/NiMH
+static const long reasonable_battery_voltage_max = 48000000; // 48V
+static const double battery_charging_voltage_default = 4200000; // std Li-ion
+// based on marketing Vnominal=3.7V (instead of real 3.6V) for
+// batteries with Vcharging=4.2V
+static const double v_charging_to_nominal = 4200000 / (3700000 / 1000);
+
+static inline long calculate_nominal_voltage_liion(double charging_voltage)
+{
+    return charging_voltage * 1000 / v_charging_to_nominal;
+}
 
 class BatteryInfo
 {
 public:
     BatteryInfo()
-        : energy_now_time(0)
+        : last_energy_change_time(0)
         , energy_now(energy_full_default)
         , capacity_from_energy(42)
         , capacity(42)
@@ -276,6 +288,7 @@ public:
         , time_to_low(3600)
         , level(BatteryLevel::Unknown)
         , power(denergy_max_default)
+        , nominal_voltage_(3800000)
         , energy_full_(energy_full_default)
         , denergy_max_(denergy_max_default)
         , empty_capacity_(env_get("BATTERY_EMPTY_LIMIT", 3))
@@ -283,22 +296,13 @@ public:
         , denergy_(6, 10)
         , path_("")
         , calculate_energy_(&BatteryInfo::calculate_energy_current)
+        , get_energy_now_(&BatteryInfo::get_energy_now_from_capacity_)
+        , current_sign_(1)
     {
         calculate_power_limits();
     }
 
-    void setup(udevpp::Device &&new_dev)
-    {
-        dev_ = cor::make_unique<udevpp::Device>(std::move(new_dev));
-        energy_full_ = attr<long>(dev_->attr("energy_full"));
-        path_ = attr<std::string>(dev_->path());
-        log.info("Battery: ", path_, ", full @ ", energy_full_);
-        calculate_energy_ = (dev_->attr("current_now")
-                             && dev_->attr("voltage_now")
-                             ? &BatteryInfo::calculate_energy_current
-                             : &BatteryInfo::calculate_energy_power_now);
-        calculate_power_limits();
-    }
+    void setup(udevpp::Device &&);
 
     void set_denergy_now(long de);
 
@@ -315,14 +319,14 @@ public:
 
     void on_processed()
     {
-        update_all(energy_now_time, energy_now, capacity_from_energy
+        update_all(last_energy_change_time, energy_now, capacity_from_energy
                    , capacity , voltage, current, temperature, status
                    , time_to_full, time_to_low, level, power);
     }
 
     long get_next_timeout() const;
 
-    ChangingValue<time_t> energy_now_time;
+    ChangingValue<time_t> last_energy_change_time;
     ChangingValue<long> energy_now;
     ChangingValue<double> capacity_from_energy;
     ChangingValue<long> capacity;
@@ -335,11 +339,7 @@ public:
     ChangingValue<BatteryLevel> level;
     ChangingValue<long> power;
 
-    void set_energy(long v) {
-        energy_now.set(v);
-        if (energy_now.changed())
-            energy_now_time.set(::time(nullptr));
-    }
+    void set_energy(long);
 
     long energy_full() const
     {
@@ -348,19 +348,27 @@ public:
 
 private:
 
-    void calculate_power_limits()
-    {
-        mw_per_percent_ = energy_full_ / 100;
-        sec_per_percent_max_ = std::max(mw_per_percent_ / denergy_max_, (long)1);
-        log.debug("Battery power limits (mw/%, s/%): "
-                  , mw_per_percent_
-                  , sec_per_percent_max_);
-    }
-
+    void calculate_power_limits();
     void calculate_energy_power_now();
     void calculate_energy_current();
 
+    long get_energy_now_directly_()
+    {
+        return attr<long>(dev_->attr("energy_now"));
+    }
+    long get_energy_now_from_charge_()
+    {
+        auto c = attr<long>(dev_->attr("charge_now"));
+        return (c / 1000) * (nominal_voltage_ / 1000);
+    }
+    long get_energy_now_from_capacity_()
+    {
+        auto c = capacity.last();
+        return energy_full_ * c / 100;
+    }
+
     std::unique_ptr<udevpp::Device> dev_;
+    long nominal_voltage_;
     long energy_full_;
     long denergy_max_;
     long empty_capacity_;
@@ -372,6 +380,8 @@ private:
     long sec_per_percent_max_;
     long dtime_;
     void (BatteryInfo::*calculate_energy_)(void);
+    long (BatteryInfo::*get_energy_now_)(void);
+    long current_sign_;
 };
 
 struct ChargerInfo
@@ -773,6 +783,102 @@ void ChargingInfo::calculate(BatteryInfo &battery, bool is_recalculate)
     }
 }
 
+void BatteryInfo::setup(udevpp::Device &&new_dev)
+{
+    auto try_use_charge = [this]() {
+        log.info("Trying to use charge info the get energy");
+        auto has_charge = dev_->attr("charge_full") && dev_->attr("charge_now");
+        if (!has_charge)
+            return false;
+
+        auto charge_full = attr<long>(dev_->attr("charge_full"));
+        if (charge_full <= 0) {
+            log.warning("Incorrect charge_full", charge_full);
+            return false;
+        }
+
+        auto tech_name = attr<std::string>(dev_->attr("technology"));
+        if (tech_name != "Li-ion")
+            log.warning("Technology '", tech_name
+                        , "' is not supported yet, assuming Li-ion");
+
+        get_energy_now_ = &BatteryInfo::get_energy_now_from_charge_;
+        auto voltage_ptr = dev_->attr("voltage_ocv");
+        long charging_voltage;
+        if  (voltage_ptr) {
+            charging_voltage = std::atoi(voltage_ptr);
+            if (charging_voltage >= reasonable_battery_voltage_max
+                || charging_voltage <= reasonable_battery_voltage_min) {
+                log.warning("Suspicious OCV voltage, do not trust it");
+                charging_voltage = battery_charging_voltage_default;
+            }
+        } else {
+            log.warning("No info about charging voltage, using default");
+            charging_voltage = battery_charging_voltage_default;
+        }
+        // nominal voltage is calculated based on empiric constant. In
+        // real life it should be taken from the battery spec
+        nominal_voltage_ = calculate_nominal_voltage_liion(charging_voltage);
+
+        energy_full_ = (charge_full / 1000) * (nominal_voltage_ / 1000);
+        return true;
+    };
+
+    dev_ = cor::make_unique<udevpp::Device>(std::move(new_dev));
+    path_ = attr<std::string>(dev_->path());
+    log.info("Battery: ", path_);
+    auto has_iv = dev_->attr("current_now") && dev_->attr("voltage_now");
+    auto has_energy = dev_->attr("energy_now") && dev_->attr("energy_full");
+
+    if (has_iv) {
+        log.info("I and V are available, using to calculate P");
+        calculate_energy_ = &BatteryInfo::calculate_energy_current;
+        if (attr<std::string>(dev_->attr("model_name")) == "INTN0001") {
+            // this driver uses -I when discharging
+            current_sign_ = -1;
+        }
+    } else {
+        log.info("No I and/or V, calculating consumed power from dE");
+        calculate_energy_ = &BatteryInfo::calculate_energy_power_now;
+    }
+
+    // choose energy info source
+    if (has_energy) {
+        log.info("Using energy_full(_now)");
+        energy_full_ = attr<long>(dev_->attr("energy_full"));
+        get_energy_now_ = &BatteryInfo::get_energy_now_directly_;
+    } else if (!try_use_charge()) {
+        log.warning("There is no energy/charge info available from kernel",
+                    ", live with fake info based on charge percentage");
+        if (dev_->attr("capacity")) {
+            energy_full_ = energy_full_default;
+            get_energy_now_ = &BatteryInfo::get_energy_now_from_capacity_;
+        } else {
+            log.critical("Even capacity values are not supplied! Fix power_supply driver!");
+            // TODO throw exeception?
+            return;
+        }
+    }
+    log.info("Battery full energy is set to ", energy_full_);
+    calculate_power_limits();
+}
+
+void BatteryInfo::set_energy(long v)
+{
+    energy_now.set(v);
+    if (energy_now.changed())
+        last_energy_change_time.set(::time(nullptr));
+}
+
+void BatteryInfo::calculate_power_limits()
+{
+    mw_per_percent_ = energy_full_ / 100;
+    sec_per_percent_max_ = std::max(mw_per_percent_ / denergy_max_, (long)1);
+    log.debug("Battery power limits (mw/%, s/%): "
+              , mw_per_percent_
+              , sec_per_percent_max_);
+}
+
 long BatteryInfo::get_next_timeout() const
 {
     auto p = power.last();
@@ -813,9 +919,7 @@ void BatteryInfo::set_denergy_now(long de)
 
 void BatteryInfo::update(udevpp::Device &&from_dev)
 {
-    if (!dev_
-        || *dev_ != from_dev
-        || attr<long>(dev_->attr("energy_full")) != energy_full_) {
+    if (!dev_ || *dev_ != from_dev) {
         log.info("Setup new battery ", from_dev.path());
         if (dev_)
             log.warning("Instead of previous battery ", dev_->path());
@@ -823,22 +927,23 @@ void BatteryInfo::update(udevpp::Device &&from_dev)
     } else {
         dev_.reset(new udevpp::Device(std::move(from_dev)));
     }
+
     if (!dev_) {
         log.error("Battery is null, do not update battery info");
         return;
     }
 
-    set_energy(attr<long>(dev_->attr("energy_now")));
-    current.set(attr<long>(dev_->attr("current_now")));
+    capacity.set(attr<long>(dev_->attr("capacity")));
+    current.set(attr<long>(dev_->attr("current_now")) * current_sign_);
     voltage.set(attr<long>(dev_->attr("voltage_now")));
     temperature.set(attr<long>(dev_->attr("temp")));
+    set_energy((this->*get_energy_now_)());
     status.set(dev_->attr("status"));
-    capacity.set(attr<long>(dev_->attr("capacity")));
 }
 
 void BatteryInfo::calculate_energy_power_now()
 {
-    auto dt = energy_now_time.last() - energy_now_time.previous();
+    auto dt = last_energy_change_time.last() - last_energy_change_time.previous();
     auto de = energy_now.last() - energy_now.previous();
     if (dt && de)
         set_denergy_now(de / dt);
