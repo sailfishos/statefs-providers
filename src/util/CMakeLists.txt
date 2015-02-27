@@ -25,7 +25,5 @@ target_link_libraries(statefs-providers-qt5
   ${STATEFS_QT5_LIBRARIES}
 )
 
-configure_file(statefs-providers-qt5.pc.in statefs-providers-qt5.pc @ONLY)
-  
 install(TARGETS statefs-providers-qt5 DESTINATION ${DST_LIB})
-install(FILES statefs-providers-qt5.pc DESTINATION ${DST_LIB}/pkgconfig)
+configure_install_pkgconfig(statefs-providers-qt5)

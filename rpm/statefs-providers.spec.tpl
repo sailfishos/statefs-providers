@@ -1,4 +1,5 @@
 %{!?cmake_install: %global cmake_install make install DESTDIR=%{buildroot}}
+%{!?_libqt5_includedir: %global _libqt5_includedir %{_qt5_headerdir}}
 
 %define ckit_version 0.7.41
 %define ckit_version1 0.7.42
@@ -138,7 +139,7 @@ rm -rf %{buildroot}
 
 %files qt5-devel
 %defattr(-,root,root,-)
-%{_qt5_headerdir}/statefs/qt/*.hpp
+%{_libqt5_includedir}/statefs/qt/*.hpp
 %{_libdir}/pkgconfig/statefs-providers-qt5.pc
 
 @@providers-qt5_system@@
