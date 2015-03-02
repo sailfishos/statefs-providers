@@ -155,7 +155,7 @@ KeyboardNs::~KeyboardNs()
 {
     TRACE() << "Stopping I/O" << std::endl;
     io_.stop();
-    monitor_thread_->join();
+    if (monitor_thread_) monitor_thread_->join();
 }
 
 Monitor::Action KeyboardNs::on_input_device(udevpp::Device &&dev)
