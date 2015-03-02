@@ -150,6 +150,55 @@ static interfaces_set_type get_interfaces(QStringList const &from)
     return res;
 }
 
+/**
+ * @addtogroup statefs_properties
+ *
+ * @section cellular_ns Cellular namespace properties:
+ *
+ * - SignalStrength (integer, [0, 100]) - signal strength in %
+ *
+ * - DataTechnology (string, legacy, [gprs, egprs, hspa, umts, lte]) -
+ *   cellular data technology
+ *
+ * - RegistrationStatus (string, legacy, [no-sim, offline, home,
+ *   forbidden, roam]) - cellular network registration status.
+ *
+ * - Sim (string, [present, absent, ]) - SIM cqard presence if known
+ *
+ * - Status (string, [unregistered, registered, searching, denied,
+ *   unknown, roaming]) - cellular registration status compatible with
+ *   ofono values set
+ *
+ * - Technology (string, [gsm, umts, lte]) - cellular technology
+ *
+ * - SignalBars (integer, legacy5]) - number of bars to show
+ *   for signal strength
+ *
+ * - CellName (string)
+ *
+ * - NetworkName (string)
+ *
+ * - ExtendedNetworkName (string, legacy)
+ *
+ * - SubscriberIdentity (string)
+ *
+ * - CurrentMCC (integer) - current Mobile Country Code
+ *
+ * - CurrentMNC (integer) - current Mobile Network Code
+ *
+ * - HomeMCC (integer) - home Mobile Country Code
+ *
+ * - HomeMNC (integer) - home Mobile Network Code
+ *
+ * - StkIdleModeText (string)
+ *
+ * - MMSContext (string)
+ *
+ * - DataRoamingAllowed (boolean, [0, 1])
+ *
+ * - GPRSAttached (boolean, [0, 1])
+ *
+ */
 static constexpr const char *property_names[] = {
     "SignalStrength",
     "DataTechnology",
