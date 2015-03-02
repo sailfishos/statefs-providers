@@ -1,3 +1,13 @@
+/**
+ * @file propvider_power_udev.cpp
+ * @brief Statefs provider of Battery namespace
+ *
+ * Uses udev as source
+ *
+ * @copyright (C) 2015 Jolla Ltd.
+ * @par License: LGPL 2.1 http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+ */
+
 #include <thread>
 #include <memory>
 #include <array>
