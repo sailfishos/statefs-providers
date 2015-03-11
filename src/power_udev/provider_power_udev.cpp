@@ -163,25 +163,14 @@ static std::string str_or_default(char const *v, char const *defval)
     return v ? v : defval;
 }
 
-template <typename T>
-T attr(char const *v);
-
-template <>
-std::string attr<std::string>(char const *v)
+std::string attr(char const *v)
 {
     return str_or_default(v, "");
 }
 
-template <>
-long attr<long>(char const *v)
+long attr(char const *v, long default_value)
 {
-    return atoi(str_or_default(v, "0").c_str());
-}
-
-template <>
-bool attr<bool>(char const *v)
-{
-    return attr<long>(v);
+    return v ? atoi(v) : default_value;
 }
 
 template <typename T>
@@ -261,6 +250,21 @@ static ChargerType charger_type(std::string const &v)
                   : (v == "DCP"
                      ? ChargerType::CDP
                      : ChargerType::Unknown))));
+}
+
+enum class ChargerState {
+    First_ = 0, Unknown = First_, Online, Offline, Last_ = Offline
+};
+
+static char const * charger_state_name(ChargerState v)
+{
+    static char const * names[] = {
+        "unknown", "online", "offline"
+    };
+    static_assert(sizeof(names)/sizeof(names[0])
+                  == cor::enum_size<ChargerState>()
+                  , "Check charger state names");
+    return names[cor::enum_index(v)];
 }
 
 // mAh * mV
@@ -364,17 +368,21 @@ private:
 
     long get_energy_now_directly_()
     {
-        return attr<long>(dev_->attr("energy_now"));
+        return (dev_->attr("energy_now"), energy_now.last());
     }
     long get_energy_now_from_charge_()
     {
-        auto c = attr<long>(dev_->attr("charge_now"));
-        return (c / 1000) * (nominal_voltage_ / 1000);
+        auto c = attr(dev_->attr("charge_now"), -1);
+        return (c > 0
+                ? ((c / 1000) * (nominal_voltage_ / 1000))
+                : energy_now.last());
     }
     long get_energy_now_from_capacity_()
     {
         auto c = capacity.last();
-        return energy_full_ * c / 100;
+        return ((c >= 0 && c <= 100)
+                ? energy_full_ * c / 100
+                : energy_now.last());
     }
 
     std::unique_ptr<udevpp::Device> dev_;
@@ -397,12 +405,19 @@ private:
 struct ChargerInfo
 {
     ChargerInfo(udevpp::Device const &dev)
-        : type(charger_type(attr<std::string>(dev.attr("type"))))
-        , online(attr<bool>(dev.attr("online")))
+        : type(charger_type(attr(dev.attr("type"))))
+        , state([&dev]() {
+                auto v = attr(dev.attr("online"), -13);
+                return (v == 0
+                        ? ChargerState::Offline
+                        : (v == -13
+                           ? ChargerState::Unknown
+                           : ChargerState::Online));
+            }())
     {}
 
     ChargerType type;
-    bool online;
+    ChargerState state;
 };
 
 class ChargingInfo
@@ -724,9 +739,7 @@ private:
 
 void ChargingInfo::on_charger(udevpp::Device &&dev)
 {
-    auto path = attr<std::string>(dev.path());
-    auto is_online = attr<bool>(dev.attr("online"));
-    log.debug("On charger ", path, (is_online ? " online" : " offline"));
+    auto path = attr(dev.path());
     ChargerInfo info(dev);
     auto it = chargers_.find(path);
     if (it != chargers_.end())
@@ -737,7 +750,7 @@ void ChargingInfo::on_charger(udevpp::Device &&dev)
 
 bool ChargingInfo::maybe_charger_removed(udevpp::Device const &dev)
 {
-    auto path = attr<std::string>(dev.path());
+    auto path = attr(dev.path());
     auto it = chargers_.find(path);
     auto is_removed = false;
     if (it != chargers_.end()) {
@@ -759,8 +772,8 @@ void ChargingInfo::update_online_status()
         (std::pair<std::string, ChargerInfo> const &nv) {
         auto const &info = nv.second;
         log.debug("Charger ", nv.first, " type=", get_chg_type_name(info.type)
-                  , " is_online?=", info.online);
-        if (info.online)
+                  , " state=", charger_state_name(info.state));
+        if (info.state == ChargerState::Online)
             found_online.push(info.type);
     };
     log.debug("Processing chargers");
@@ -801,13 +814,13 @@ void BatteryInfo::setup(udevpp::Device &&new_dev)
         if (!has_charge)
             return false;
 
-        auto charge_full = attr<long>(dev_->attr("charge_full"));
+        auto charge_full = attr(dev_->attr("charge_full"), -1);
         if (charge_full <= 0) {
             log.warning("Incorrect charge_full", charge_full);
             return false;
         }
 
-        auto tech_name = attr<std::string>(dev_->attr("technology"));
+        auto tech_name = attr(dev_->attr("technology"));
         if (tech_name != "Li-ion")
             log.warning("Technology '", tech_name
                         , "' is not supported yet, assuming Li-ion");
@@ -835,7 +848,7 @@ void BatteryInfo::setup(udevpp::Device &&new_dev)
     };
 
     dev_ = cor::make_unique<udevpp::Device>(std::move(new_dev));
-    path_ = attr<std::string>(dev_->path());
+    path_ = attr(dev_->path());
     log.info("Battery: ", path_);
     auto has_iv = dev_->attr("current_now") && dev_->attr("voltage_now");
     auto has_energy = dev_->attr("energy_now") && dev_->attr("energy_full");
@@ -843,7 +856,7 @@ void BatteryInfo::setup(udevpp::Device &&new_dev)
     if (has_iv) {
         log.info("I and V are available, using to calculate P");
         calculate_energy_ = &BatteryInfo::calculate_energy_current;
-        if (attr<std::string>(dev_->attr("model_name")) == "INTN0001") {
+        if (attr(dev_->attr("model_name")) == "INTN0001") {
             // this driver uses -I when discharging
             current_sign_ = -1;
         }
@@ -855,9 +868,15 @@ void BatteryInfo::setup(udevpp::Device &&new_dev)
     // choose energy info source
     if (has_energy) {
         log.info("Using energy_full(_now)");
-        energy_full_ = attr<long>(dev_->attr("energy_full"));
-        get_energy_now_ = &BatteryInfo::get_energy_now_directly_;
-    } else if (!try_use_charge()) {
+        energy_full_ = attr(dev_->attr("energy_full"), -1);
+        if (energy_full_ > 0) {
+            get_energy_now_ = &BatteryInfo::get_energy_now_directly_;
+        } else {
+            log.warning("Read wrong energy_full value", energy_full_);
+            has_energy = false;
+        }
+    }
+    if (!(has_energy || try_use_charge())) {
         log.warning("There is no energy/charge info available from kernel",
                     ", live with fake info based on charge percentage");
         if (dev_->attr("capacity")) {
@@ -943,12 +962,18 @@ void BatteryInfo::update(udevpp::Device &&from_dev)
         return;
     }
 
-    capacity.set(attr<long>(dev_->attr("capacity")));
-    current.set(attr<long>(dev_->attr("current_now")) * current_sign_);
-    voltage.set(attr<long>(dev_->attr("voltage_now")));
-    temperature.set(attr<long>(dev_->attr("temp")));
+    auto capacity_ptr = dev_->attr("capacity");
+    if (!capacity_ptr) {
+        log.warning("Capacity was not read");
+        capacity.set(-1);
+    } else {
+        capacity.set(atoi(capacity_ptr));
+    }
+    current.set(attr(dev_->attr("current_now"), current.last()) * current_sign_);
+    voltage.set(attr(dev_->attr("voltage_now"), voltage.last()));
+    temperature.set(attr(dev_->attr("temp"), temperature.last()));
     set_energy((this->*get_energy_now_)());
-    status.set(dev_->attr("status"));
+    status.set(attr(dev_->attr("status")));
 }
 
 void BatteryInfo::calculate_energy_power_now()
@@ -980,8 +1005,7 @@ void BatteryInfo::calculate(bool is_recalculate)
     if (capacity.changed() || is_recalculate) {
         auto c = capacity.last();
         if (c < 0 || c > 100) {
-            log.warning("Invalid capacity ", c, ", using fake");
-            capacity.set(42);
+            log.warning("Invalid capacity ", c);
             level.set(BatteryLevel::Unknown);
         } else if (c < empty_capacity_) {
             level.set(BatteryLevel::Empty);
@@ -1209,7 +1233,7 @@ void Monitor::after_enumeration()
 
 void Monitor::on_device(udevpp::Device &&dev)
 {
-    auto t = attr<std::string>(dev.attr("type"));
+    auto t = attr(dev.attr("type"));
     if (t == "Battery") {
         // TODO there can be several batteries including also backup battery
         battery_.update(std::move(dev));
@@ -1238,7 +1262,8 @@ void Monitor::notify(bool is_initial)
     };
 
     set<P::Capacity>(battery_.capacity_from_energy, is_initial);
-    set<P::ChargePercentage>(battery_.capacity, is_initial);
+    if (battery_.level.last() != BatteryLevel::Unknown)
+        set<P::ChargePercentage>(battery_.capacity, is_initial);
     set<P::Energy>(battery_.energy_now, is_initial);
     set_battery_prop<P::EnergyFull>(battery_.energy_full());
     set<P::OnBattery>(charging_.charger_type, get_on_battery, is_initial);
