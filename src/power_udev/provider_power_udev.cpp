@@ -1007,9 +1007,9 @@ void BatteryInfo::calculate(bool is_recalculate)
         if (c < 0 || c > 100) {
             log.warning("Invalid capacity ", c);
             level.set(BatteryLevel::Unknown);
-        } else if (c < empty_capacity_) {
+        } else if (c <= empty_capacity_) {
             level.set(BatteryLevel::Empty);
-        } else if (c < low_capacity_) {
+        } else if (c <= low_capacity_) {
             level.set(BatteryLevel::Low);
         } else {
             level.set(BatteryLevel::Normal);
