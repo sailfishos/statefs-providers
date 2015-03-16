@@ -47,6 +47,8 @@ public:
         : prev_(from.prev_), now_(from.now_)
     {}
 
+    virtual ~ChangingValue() {}
+
     ChangingValue& operator = (ChangingValue<T> const &from)
     {
         ChangingValue<T> tmp(from);
@@ -209,6 +211,42 @@ static char const * get_level_name(BatteryLevel t)
     return names[cor::enum_index(t)];
 }
 
+class CapacityValue : public ChangingValue<long>
+{
+    typedef ChangingValue<long> base_type;
+public:
+    CapacityValue(long initial)
+        : base_type(initial)
+        , empty_capacity_(env_get("BATTERY_EMPTY_LIMIT", 3))
+        , low_capacity_(env_get("BATTERY_LOW_LIMIT", 10))
+    {}
+
+    bool is_valid(long v) const
+    {
+        return (v >= 0 && v <= 100);
+    }
+
+    bool is_valid() const
+    {
+        return is_valid(last());
+    }
+
+    BatteryLevel level() const
+    {
+        auto c = last();
+        return (!is_valid()
+                ? BatteryLevel::Unknown
+                : (c <= empty_capacity_
+                   ? BatteryLevel::Empty
+                   : (c <= low_capacity_
+                      ? BatteryLevel::Low
+                      : BatteryLevel::Normal)));
+    }
+private:
+    long empty_capacity_;
+    long low_capacity_;
+};
+
 enum class ChargingState {
     First_ = 0, Unknown = First_, Charging, Discharging, Idle, Last_ = Idle
 };
@@ -305,8 +343,6 @@ public:
         , nominal_voltage_(3800000)
         , energy_full_(energy_full_default)
         , denergy_max_(denergy_max_default)
-        , empty_capacity_(env_get("BATTERY_EMPTY_LIMIT", 3))
-        , low_capacity_(env_get("BATTERY_LOW_LIMIT", 10))
         , denergy_(6, 10)
         , path_("")
         , calculate_energy_(&BatteryInfo::calculate_energy_current)
@@ -343,7 +379,7 @@ public:
     ChangingValue<time_t> last_energy_change_time;
     ChangingValue<long> energy_now;
     ChangingValue<double> capacity_from_energy;
-    ChangingValue<long> capacity;
+    CapacityValue capacity;
     ChangingValue<long> voltage;
     ChangingValue<long> current;
     ChangingValue<long> temperature;
@@ -379,9 +415,8 @@ private:
     }
     long get_energy_now_from_capacity_()
     {
-        auto c = capacity.last();
-        return ((c >= 0 && c <= 100)
-                ? energy_full_ * c / 100
+        return ((capacity.is_valid())
+                ? energy_full_ * capacity.last() / 100
                 : energy_now.last());
     }
 
@@ -389,8 +424,6 @@ private:
     long nominal_voltage_;
     long energy_full_;
     long denergy_max_;
-    long empty_capacity_;
-    long low_capacity_;
     LastN<long> denergy_;
     std::string path_;
 
@@ -1007,17 +1040,7 @@ void BatteryInfo::calculate(bool is_recalculate)
     // TODO: 2 different sources of capacity allow to compare and
     // verify driver data
     if (capacity.changed() || is_recalculate) {
-        auto c = capacity.last();
-        if (c < 0 || c > 100) {
-            log.warning("Invalid capacity ", c);
-            level.set(BatteryLevel::Unknown);
-        } else if (c <= empty_capacity_) {
-            level.set(BatteryLevel::Empty);
-        } else if (c <= low_capacity_) {
-            level.set(BatteryLevel::Low);
-        } else {
-            level.set(BatteryLevel::Normal);
-        }
+        level.set(capacity.level());
     }
     if (temperature.changed() || is_recalculate) {
         auto t = temperature.last();
