@@ -60,6 +60,7 @@ namespace statefs { namespace ofono {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
+using statefs::qt::make_proper_source;
 using qtaround::dbus::sync;
 using qtaround::dbus::async;
 
@@ -960,9 +961,8 @@ void MainNs::resetProperties(Bridge::Status status, SimPresent sim)
 
 #define PROP_(prop_name, value) { Bridge::name(Property::prop_name), value }
 
-MainNs::MainNs(QDBusConnection &bus)
-    : Namespace("Cellular", std::unique_ptr<PropertiesSource>
-                (new Bridge(this, bus)))
+MainNs::MainNs(QDBusConnection &bus, statefs_provider_mode mode)
+    : Namespace("Cellular", make_proper_source<Bridge>(mode, this, bus))
     , defaults_({
             PROP_(SignalStrength, "0")
                 , PROP_(DataTechnology, "unknown")
@@ -1006,7 +1006,8 @@ public:
         : AProvider("ofono", server)
         , bus_(QDBusConnection::systemBus())
     {
-        auto ns = std::make_shared<MainNs>(bus_);
+        auto ns = std::make_shared<MainNs>
+            (bus_, server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
     virtual ~Provider() {}

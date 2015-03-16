@@ -46,7 +46,8 @@ class ScreenNs;
 class MceNs : public statefs::qt::Namespace
 {
 public:
-    MceNs(QDBusConnection &bus, std::shared_ptr<ScreenNs> const &);
+    MceNs(QDBusConnection &bus, std::shared_ptr<ScreenNs> const &
+          , statefs_provider_mode);
 
 private:
     friend class Bridge;

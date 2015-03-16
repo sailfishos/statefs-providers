@@ -31,6 +31,7 @@ namespace statefs { namespace profile {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
+using statefs::qt::make_proper_source;
 using qtaround::dbus::async;
 using qtaround::dbus::sync;
 
@@ -77,9 +78,8 @@ void Bridge::init()
 }
 
 
-ProfileNs::ProfileNs(QDBusConnection &bus)
-    : Namespace("Profile", std::unique_ptr<PropertiesSource>
-                (new Bridge(this, bus)))
+ProfileNs::ProfileNs(QDBusConnection &bus, statefs_provider_mode mode)
+    : Namespace("Profile", make_proper_source<Bridge>(mode, this, bus))
     , defaults_({{"Name", ""}})
 {
     for (auto v : defaults_)
@@ -102,7 +102,8 @@ public:
         : AProvider("profile", server)
         , bus_(QDBusConnection::sessionBus())
     {
-        auto ns = std::make_shared<ProfileNs>(bus_);
+        auto ns = std::make_shared<ProfileNs>
+            (bus_, server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
     virtual ~Provider() {}

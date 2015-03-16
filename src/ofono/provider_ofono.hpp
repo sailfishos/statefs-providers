@@ -191,7 +191,7 @@ using statefs::qt::Namespace;
 class MainNs : public statefs::qt::Namespace
 {
 public:
-    MainNs(QDBusConnection &bus);
+    MainNs(QDBusConnection &bus, statefs_provider_mode);
 
     template <typename T>
     void updateProperty(Property id, T &&value)

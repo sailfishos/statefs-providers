@@ -32,6 +32,7 @@ namespace statefs { namespace bluez {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
+using statefs::qt::make_proper_source;
 using qtaround::dbus::async;
 
 
@@ -137,9 +138,8 @@ void Bridge::removeDevice(const QDBusObjectPath &v)
         updateProperty("Connected", connected_.size() > 0);
 }
 
-BlueZ::BlueZ(QDBusConnection &bus)
-    : Namespace("Bluetooth", std::unique_ptr<PropertiesSource>
-                (new Bridge(this, bus)))
+BlueZ::BlueZ(QDBusConnection &bus, statefs_provider_mode mode)
+    : Namespace("Bluetooth", make_proper_source<Bridge>(mode, this, bus))
     , defaults_({
             { "Powered", "0" }
             , { "Discoverable", "0" }
@@ -166,7 +166,8 @@ public:
         : AProvider("bluez", server)
         , bus_(QDBusConnection::systemBus())
     {
-        auto ns = std::make_shared<BlueZ>(bus_);
+        auto ns = std::make_shared<BlueZ>
+            (bus_, server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
     virtual ~Provider() {}

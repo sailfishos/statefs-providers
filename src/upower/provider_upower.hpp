@@ -102,7 +102,7 @@ class PowerNs : public statefs::qt::Namespace
 {
 public:
 
-    PowerNs(QDBusConnection &bus);
+    PowerNs(QDBusConnection &bus, statefs_provider_mode);
 private:
     statefs::qt::DefaultProperties defaults_;
 };

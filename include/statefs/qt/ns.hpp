@@ -5,6 +5,7 @@
 #include <statefs/property.hpp>
 
 #include <map>
+#include <memory>
 #include <QString>
 #include <QVariant>
 
@@ -26,6 +27,33 @@ public:
 protected:
     Namespace *target_;
 };
+
+class DummySource : public PropertiesSource
+{
+public:
+    DummySource(Namespace *ns) : PropertiesSource(ns) {}
+    virtual void init() {}
+};
+
+template <typename T, typename ... Args>
+std::unique_ptr<PropertiesSource> make_source(Args&& ... args)
+{
+    return std::unique_ptr<PropertiesSource>(new T(std::forward<Args>(args)...));
+}
+
+static inline std::unique_ptr<PropertiesSource> dummy_source(Namespace *ns)
+{
+    return std::unique_ptr<PropertiesSource>(new DummySource(ns));
+}
+
+template <typename T, typename NamespaceT, typename ... Args>
+std::unique_ptr<PropertiesSource> make_proper_source
+(statefs_provider_mode mode, NamespaceT *ns, Args&& ... args)
+{
+    return (mode == statefs_provider_mode_run
+            ? make_source<T>(ns, std::forward<Args>(args)...)
+            : dummy_source(ns));
+}
 
 class Namespace : public statefs::Namespace
 {

@@ -35,6 +35,7 @@ namespace statefs { namespace mce {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
+using statefs::qt::make_proper_source;
 using qtaround::dbus::sync;
 using qtaround::dbus::async;
 
@@ -87,9 +88,9 @@ void Bridge::init()
 }
 
 
-MceNs::MceNs(QDBusConnection &bus, std::shared_ptr<ScreenNs> const &screen)
-    : Namespace("System", std::unique_ptr<PropertiesSource>
-                (new Bridge(this, bus)))
+MceNs::MceNs(QDBusConnection &bus, std::shared_ptr<ScreenNs> const &screen
+             , statefs_provider_mode mode)
+    : Namespace("System", make_proper_source<Bridge>(mode, this, bus))
     , screen_(screen)
     , defaults_({{"PowerSaveMode", "0"}
             , {"OfflineMode", "0"}
@@ -136,7 +137,9 @@ public:
         , bus_(QDBusConnection::systemBus())
     {
         auto screen_ns = std::make_shared<ScreenNs>();
-        auto ns = std::make_shared<MceNs>(bus_, screen_ns);
+        auto ns = std::make_shared<MceNs>
+            (bus_, screen_ns, server
+             ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
         insert(std::static_pointer_cast<statefs::ANode>(screen_ns));
     }
