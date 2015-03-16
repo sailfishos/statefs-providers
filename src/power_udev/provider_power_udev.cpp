@@ -511,6 +511,7 @@ public:
      *
      * - LowBattery [0, 1] - is battery level below low battery
      *   threshold (defined by BATTERY_LOW_LIMIT) environment variable
+     *   and charging is not going on
      *
      * - TimeUntilLow (sec) - approx. time until battery will be empty
      *
@@ -532,6 +533,9 @@ public:
      *   ("" - if absent)
      *
      * - Level - (string) [unknown, normal, low, empty] - battery level
+     *
+     * - ChargingState - (string) [unknown, charging, discharging,
+     *   idle] - charging state
      */
     enum class Prop {
         ChargePercentage, Capacity
