@@ -1275,6 +1275,7 @@ void Monitor::notify(bool is_initial)
         auto charging_state = charging_.state.last();
         auto bat_level = battery_.level.last();
         std::string res{""};
+        bool is_low = false;
         switch (charging_state) {
         case ChargingState::Charging:
             if (bat_level == BatteryLevel::Low || bat_level == BatteryLevel::Empty)
@@ -1288,9 +1289,11 @@ void Monitor::notify(bool is_initial)
         default:
             switch (bat_level) {
             case BatteryLevel::Empty:
+                is_low = true;
                 res = "empty";
                 break;
             case BatteryLevel::Low:
+                is_low = true;
                 res = "low";
                 break;
             case BatteryLevel::Normal:
@@ -1302,6 +1305,7 @@ void Monitor::notify(bool is_initial)
             }
             break;
         }
+        set_battery_prop<P::LowBattery>(is_low);
         set_battery_prop<P::State>(res);
     }
     set<P::Voltage>(battery_.voltage, is_initial);
