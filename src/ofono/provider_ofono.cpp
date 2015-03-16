@@ -199,6 +199,7 @@ static interfaces_set_type get_interfaces(QStringList const &from)
  *
  * - GPRSAttached (boolean, [0, 1])
  *
+ * - VoiceCall (boolean, [0, 1]) - is voice calling available
  */
 static constexpr const char *property_names[] = {
     "SignalStrength",
@@ -219,7 +220,8 @@ static constexpr const char *property_names[] = {
     "StkIdleModeText",
     "MMSContext",
     "DataRoamingAllowed",
-    "GPRSAttached"
+    "GPRSAttached",
+    "VoiceCall"
 };
 
 static_assert(sizeof(property_names)/sizeof(property_names[0])
@@ -629,6 +631,9 @@ void Bridge::process_interfaces(QStringList const &v)
         setup_connectionManager(modem_path_);
     else if (cm_state == State::Reset)
         reset_connectionManager();
+
+    auto voice_state = state(Interface::VoiceCallManager);
+    updateProperty(Property::VoiceCall, is_set(voice_state));
 }
 
 bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
@@ -981,6 +986,7 @@ MainNs::MainNs(QDBusConnection &bus, statefs_provider_mode mode)
                 , PROP_(MMSContext, "")
                 , PROP_(DataRoamingAllowed, "0")
                 , PROP_(GPRSAttached, "0")
+                , PROP_(VoiceCall, "0")
         })
 {
     // contextkit prop
@@ -991,6 +997,7 @@ MainNs::MainNs(QDBusConnection &bus, statefs_provider_mode mode)
 
     for (auto v : defaults_)
         addProperty(v.first, v.second);
+
     src_->init();
 }
 

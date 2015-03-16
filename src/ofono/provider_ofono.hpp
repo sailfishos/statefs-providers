@@ -90,7 +90,8 @@ enum class Property {
     StkIdleModeText,
     MMSContext,
     DataRoamingAllowed,
-    GPRSAttached, Last_ = GPRSAttached
+    GPRSAttached,
+    VoiceCall, Last_ = VoiceCall
 };
 
 struct ConnectionCache
