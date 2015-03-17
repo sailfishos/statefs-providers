@@ -927,6 +927,8 @@ void BatteryInfo::setup(udevpp::Device &&new_dev)
     }
     log.info("Battery full energy is set to ", energy_full_);
     calculate_power_limits();
+    energy_now.set((this->*get_energy_now_)());
+    last_energy_change_time.set(::time(nullptr));
 }
 
 void BatteryInfo::set_energy(long v)
