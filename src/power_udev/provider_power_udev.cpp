@@ -1307,10 +1307,7 @@ void Monitor::notify(bool is_initial)
         bool is_low = false;
         switch (charging_state) {
         case ChargingState::Charging:
-            if (bat_level == BatteryLevel::Low || bat_level == BatteryLevel::Empty)
-                res = "low";
-            else
-                res = "charging";
+            res = "charging";
             break;
         case ChargingState::Idle:
             res = "full";
