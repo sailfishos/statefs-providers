@@ -277,17 +277,19 @@ static char const * get_chg_type_name(ChargerType t)
     return names[cor::enum_index(t)];
 }
 
+static const std::map<std::string, ChargerType> charger_types = {
+    {"USB_DCP", ChargerType::DCP},
+    {"USB", ChargerType::USB},
+    {"Mains", ChargerType::Mains},
+    {"CDP", ChargerType::CDP},
+    {"USB_CDP", ChargerType::CDP},
+    {"USB_ACA", ChargerType::USB}
+};
+
 static ChargerType charger_type(std::string const &v)
 {
-    return (v == "USB_DCP"
-            ? ChargerType::DCP
-            : (v == "Mains"
-               ? ChargerType::Mains
-               : (v == "USB"
-                  ? ChargerType::USB
-                  : (v == "DCP"
-                     ? ChargerType::CDP
-                     : ChargerType::Unknown))));
+    auto it = charger_types.find(v);
+    return (it != charger_types.end() ? it->second : ChargerType::Unknown);
 }
 
 enum class ChargerState {
@@ -550,12 +552,13 @@ public:
      *
      * - TimeUntilFull (sec) - approx. time until battery will be charged
      *
-     * - Temperature (integer, °C * 10) - battery zone temperature if provided
+     * - Temperature (integer, °C * 10) - battery zone temperature if
+     *   provided
      *
      * - Power (integer, uW) - average power consumed during several
      *   last measurements (positive - charging)
      *
-     * - State (deprecated, string) [unknown, charging, discharging, full, low,
+     * - State (string) [unknown, charging, discharging, full, low,
      *    empty] - battery state
      *
      * - Voltage (uV) - battery voltage
