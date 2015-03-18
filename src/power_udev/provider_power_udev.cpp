@@ -1277,8 +1277,6 @@ void Monitor::on_device(udevpp::Device &&dev)
 
 void Monitor::notify(bool is_initial)
 {
-    battery_.calculate(is_initial);
-    charging_.calculate(battery_, is_initial);
     typedef BatteryNs::Prop P;
 
     auto get_is_charging = [this](ChargingState s)
@@ -1290,20 +1288,9 @@ void Monitor::notify(bool is_initial)
         return (t == ChargerType::Absent || t == ChargerType::Unknown);
     };
 
-    set<P::Capacity>(battery_.capacity_from_energy, is_initial);
-    if (battery_.level.last() != BatteryLevel::Unknown)
-        set<P::ChargePercentage>(battery_.capacity, is_initial);
-    set<P::Energy>(battery_.energy_now, is_initial);
-    set_battery_prop<P::EnergyFull>(battery_.energy_full());
-    set<P::OnBattery>(charging_.charger_type, get_on_battery, is_initial);
-    set<P::TimeUntilLow>(battery_.time_to_low, is_initial);
-    set<P::TimeUntilFull>(battery_.time_to_full, is_initial);
-    set<P::Temperature>(battery_.temperature, is_initial);
-    set<P::Power>(battery_.power, is_initial);
-    if (battery_.level.changed() || charging_.state.changed()) {
-        auto charging_state = charging_.state.last();
-        auto bat_level = battery_.level.last();
-        std::string res{""};
+    auto set_state = [this](BatteryLevel bat_level
+                            , ChargingState charging_state) {
+        std::string res;
         bool is_low = false;
         switch (charging_state) {
         case ChargingState::Charging:
@@ -1333,7 +1320,24 @@ void Monitor::notify(bool is_initial)
         }
         set_battery_prop<P::LowBattery>(is_low);
         set_battery_prop<P::State>(res);
-    }
+    };
+
+    battery_.calculate(is_initial);
+    charging_.calculate(battery_, is_initial);
+
+    set<P::Capacity>(battery_.capacity_from_energy, is_initial);
+    if (battery_.level.last() != BatteryLevel::Unknown)
+        set<P::ChargePercentage>(battery_.capacity, is_initial);
+    set<P::Energy>(battery_.energy_now, is_initial);
+    set_battery_prop<P::EnergyFull>(battery_.energy_full());
+    set<P::OnBattery>(charging_.charger_type, get_on_battery, is_initial);
+    set<P::TimeUntilLow>(battery_.time_to_low, is_initial);
+    set<P::TimeUntilFull>(battery_.time_to_full, is_initial);
+    set<P::Temperature>(battery_.temperature, is_initial);
+    set<P::Power>(battery_.power, is_initial);
+    if (is_initial || battery_.level.changed() || charging_.state.changed())
+        set_state(battery_.level.last(), charging_.state.last());
+
     set<P::Voltage>(battery_.voltage, is_initial);
     set<P::Current>(battery_.current, is_initial);
     set<P::Level>(battery_.level, get_level_name, is_initial);
