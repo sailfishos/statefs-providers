@@ -13,6 +13,7 @@ namespace statefs { namespace sensors {
 
 using statefs::qt::PropertiesSource;
 using statefs::qt::Namespace;
+using statefs::qt::make_proper_source;
 
 class SensorNs;
 class Bridge : public QObject, public PropertiesSource
@@ -64,8 +65,7 @@ void Bridge::init()
 }
 
 SensorNs::SensorNs(statefs_provider_mode mode)
-    : Namespace("Sensor", std::unique_ptr<PropertiesSource>
-                (new Bridge(this)))
+    : Namespace("Sensor", make_proper_source<Bridge>(mode, this))
     , defaults_({{"Orientation", "unknown"}})
 {
     for (auto v : defaults_)

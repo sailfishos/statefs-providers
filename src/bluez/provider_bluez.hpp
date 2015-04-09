@@ -53,7 +53,7 @@ class BlueZ : public statefs::qt::Namespace
 {
 public:
 
-    BlueZ(QDBusConnection &bus);
+    BlueZ(QDBusConnection &bus, statefs_provider_mode);
 
 private:
     friend class Bridge;

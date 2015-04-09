@@ -60,6 +60,7 @@ namespace statefs { namespace ofono {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
+using statefs::qt::make_proper_source;
 using qtaround::dbus::sync;
 using qtaround::dbus::async;
 
@@ -198,6 +199,7 @@ static interfaces_set_type get_interfaces(QStringList const &from)
  *
  * - GPRSAttached (boolean, [0, 1])
  *
+ * - VoiceCall (boolean, [0, 1]) - is voice calling available
  */
 static constexpr const char *property_names[] = {
     "SignalStrength",
@@ -218,7 +220,8 @@ static constexpr const char *property_names[] = {
     "StkIdleModeText",
     "MMSContext",
     "DataRoamingAllowed",
-    "GPRSAttached"
+    "GPRSAttached",
+    "VoiceCall"
 };
 
 static_assert(sizeof(property_names)/sizeof(property_names[0])
@@ -628,6 +631,9 @@ void Bridge::process_interfaces(QStringList const &v)
         setup_connectionManager(modem_path_);
     else if (cm_state == State::Reset)
         reset_connectionManager();
+
+    auto voice_state = state(Interface::VoiceCallManager);
+    updateProperty(Property::VoiceCall, is_set(voice_state));
 }
 
 bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
@@ -960,9 +966,8 @@ void MainNs::resetProperties(Bridge::Status status, SimPresent sim)
 
 #define PROP_(prop_name, value) { Bridge::name(Property::prop_name), value }
 
-MainNs::MainNs(QDBusConnection &bus)
-    : Namespace("Cellular", std::unique_ptr<PropertiesSource>
-                (new Bridge(this, bus)))
+MainNs::MainNs(QDBusConnection &bus, statefs_provider_mode mode)
+    : Namespace("Cellular", make_proper_source<Bridge>(mode, this, bus))
     , defaults_({
             PROP_(SignalStrength, "0")
                 , PROP_(DataTechnology, "unknown")
@@ -981,6 +986,7 @@ MainNs::MainNs(QDBusConnection &bus)
                 , PROP_(MMSContext, "")
                 , PROP_(DataRoamingAllowed, "0")
                 , PROP_(GPRSAttached, "0")
+                , PROP_(VoiceCall, "0")
         })
 {
     // contextkit prop
@@ -991,6 +997,7 @@ MainNs::MainNs(QDBusConnection &bus)
 
     for (auto v : defaults_)
         addProperty(v.first, v.second);
+
     src_->init();
 }
 
@@ -1006,7 +1013,8 @@ public:
         : AProvider("ofono", server)
         , bus_(QDBusConnection::systemBus())
     {
-        auto ns = std::make_shared<MainNs>(bus_);
+        auto ns = std::make_shared<MainNs>
+            (bus_, server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
     virtual ~Provider() {}

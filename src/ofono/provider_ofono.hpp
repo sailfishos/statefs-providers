@@ -90,7 +90,8 @@ enum class Property {
     StkIdleModeText,
     MMSContext,
     DataRoamingAllowed,
-    GPRSAttached, Last_ = GPRSAttached
+    GPRSAttached,
+    VoiceCall, Last_ = VoiceCall
 };
 
 struct ConnectionCache
@@ -191,7 +192,7 @@ using statefs::qt::Namespace;
 class MainNs : public statefs::qt::Namespace
 {
 public:
-    MainNs(QDBusConnection &bus);
+    MainNs(QDBusConnection &bus, statefs_provider_mode);
 
     template <typename T>
     void updateProperty(Property id, T &&value)

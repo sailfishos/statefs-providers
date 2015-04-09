@@ -32,6 +32,7 @@ namespace statefs { namespace connman {
 
 using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
+using statefs::qt::make_proper_source;
 using qtaround::dbus::sync;
 using qtaround::dbus::async;
 
@@ -263,9 +264,8 @@ void Bridge::process_technology(QString const &path
     technologies_.insert(std::make_pair(path, std::move(tech)));
 }
 
-InternetNs::InternetNs(QDBusConnection &bus)
-    : Namespace("Internet", std::unique_ptr<PropertiesSource>
-                (new Bridge(this, bus)))
+InternetNs::InternetNs(QDBusConnection &bus, statefs_provider_mode mode)
+    : Namespace("Internet", make_proper_source<Bridge>(mode, this, bus))
     , defaults_({{"NetworkType", ""}
             , {"NetworkState", "disconnected"}
             , {"NetworkName", ""}
@@ -297,7 +297,8 @@ public:
         : AProvider("connman", server)
         , bus_(QDBusConnection::systemBus())
     {
-        auto ns = std::make_shared<InternetNs>(bus_);
+        auto ns = std::make_shared<InternetNs>
+            (bus_, server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
     }
     virtual ~Provider() {}

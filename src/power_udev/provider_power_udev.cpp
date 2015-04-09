@@ -47,6 +47,8 @@ public:
         : prev_(from.prev_), now_(from.now_)
     {}
 
+    virtual ~ChangingValue() {}
+
     ChangingValue& operator = (ChangingValue<T> const &from)
     {
         ChangingValue<T> tmp(from);
@@ -209,6 +211,42 @@ static char const * get_level_name(BatteryLevel t)
     return names[cor::enum_index(t)];
 }
 
+class CapacityValue : public ChangingValue<long>
+{
+    typedef ChangingValue<long> base_type;
+public:
+    CapacityValue(long initial)
+        : base_type(initial)
+        , empty_capacity_(env_get("BATTERY_EMPTY_LIMIT", 3))
+        , low_capacity_(env_get("BATTERY_LOW_LIMIT", 10))
+    {}
+
+    bool is_valid(long v) const
+    {
+        return (v >= 0 && v <= 100);
+    }
+
+    bool is_valid() const
+    {
+        return is_valid(last());
+    }
+
+    BatteryLevel level() const
+    {
+        auto c = last();
+        return (!is_valid()
+                ? BatteryLevel::Unknown
+                : (c <= empty_capacity_
+                   ? BatteryLevel::Empty
+                   : (c <= low_capacity_
+                      ? BatteryLevel::Low
+                      : BatteryLevel::Normal)));
+    }
+private:
+    long empty_capacity_;
+    long low_capacity_;
+};
+
 enum class ChargingState {
     First_ = 0, Unknown = First_, Charging, Discharging, Idle, Last_ = Idle
 };
@@ -239,17 +277,19 @@ static char const * get_chg_type_name(ChargerType t)
     return names[cor::enum_index(t)];
 }
 
+static const std::map<std::string, ChargerType> charger_types = {
+    {"USB_DCP", ChargerType::DCP},
+    {"USB", ChargerType::USB},
+    {"Mains", ChargerType::Mains},
+    {"CDP", ChargerType::CDP},
+    {"USB_CDP", ChargerType::CDP},
+    {"USB_ACA", ChargerType::USB}
+};
+
 static ChargerType charger_type(std::string const &v)
 {
-    return (v == "USB_DCP"
-            ? ChargerType::DCP
-            : (v == "Mains"
-               ? ChargerType::Mains
-               : (v == "USB"
-                  ? ChargerType::USB
-                  : (v == "DCP"
-                     ? ChargerType::CDP
-                     : ChargerType::Unknown))));
+    auto it = charger_types.find(v);
+    return (it != charger_types.end() ? it->second : ChargerType::Unknown);
 }
 
 enum class ChargerState {
@@ -305,8 +345,6 @@ public:
         , nominal_voltage_(3800000)
         , energy_full_(energy_full_default)
         , denergy_max_(denergy_max_default)
-        , empty_capacity_(env_get("BATTERY_EMPTY_LIMIT", 3))
-        , low_capacity_(env_get("BATTERY_LOW_LIMIT", 10))
         , denergy_(6, 10)
         , path_("")
         , calculate_energy_(&BatteryInfo::calculate_energy_current)
@@ -343,7 +381,7 @@ public:
     ChangingValue<time_t> last_energy_change_time;
     ChangingValue<long> energy_now;
     ChangingValue<double> capacity_from_energy;
-    ChangingValue<long> capacity;
+    CapacityValue capacity;
     ChangingValue<long> voltage;
     ChangingValue<long> current;
     ChangingValue<long> temperature;
@@ -379,9 +417,8 @@ private:
     }
     long get_energy_now_from_capacity_()
     {
-        auto c = capacity.last();
-        return ((c >= 0 && c <= 100)
-                ? energy_full_ * c / 100
+        return ((capacity.is_valid())
+                ? energy_full_ * capacity.last() / 100
                 : energy_now.last());
     }
 
@@ -389,8 +426,6 @@ private:
     long nominal_voltage_;
     long energy_full_;
     long denergy_max_;
-    long empty_capacity_;
-    long low_capacity_;
     LastN<long> denergy_;
     std::string path_;
 
@@ -511,17 +546,19 @@ public:
      *
      * - LowBattery [0, 1] - is battery level below low battery
      *   threshold (defined by BATTERY_LOW_LIMIT) environment variable
+     *   and charging is not going on
      *
      * - TimeUntilLow (sec) - approx. time until battery will be empty
      *
      * - TimeUntilFull (sec) - approx. time until battery will be charged
      *
-     * - Temperature (integer, °C * 10) - battery zone temperature if provided
+     * - Temperature (integer, °C * 10) - battery zone temperature if
+     *   provided
      *
      * - Power (integer, uW) - average power consumed during several
      *   last measurements (positive - charging)
      *
-     * - State (deprecated, string) [unknown, charging, discharging, full, low,
+     * - State (string) [unknown, charging, discharging, full, low,
      *    empty] - battery state
      *
      * - Voltage (uV) - battery voltage
@@ -532,6 +569,9 @@ public:
      *   ("" - if absent)
      *
      * - Level - (string) [unknown, normal, low, empty] - battery level
+     *
+     * - ChargingState - (string) [unknown, charging, discharging,
+     *   idle] - charging state
      */
     enum class Prop {
         ChargePercentage, Capacity
@@ -890,6 +930,8 @@ void BatteryInfo::setup(udevpp::Device &&new_dev)
     }
     log.info("Battery full energy is set to ", energy_full_);
     calculate_power_limits();
+    energy_now.set((this->*get_energy_now_)());
+    last_energy_change_time.set(::time(nullptr));
 }
 
 void BatteryInfo::set_energy(long v)
@@ -1003,17 +1045,7 @@ void BatteryInfo::calculate(bool is_recalculate)
     // TODO: 2 different sources of capacity allow to compare and
     // verify driver data
     if (capacity.changed() || is_recalculate) {
-        auto c = capacity.last();
-        if (c < 0 || c > 100) {
-            log.warning("Invalid capacity ", c);
-            level.set(BatteryLevel::Unknown);
-        } else if (c <= empty_capacity_) {
-            level.set(BatteryLevel::Empty);
-        } else if (c <= low_capacity_) {
-            level.set(BatteryLevel::Low);
-        } else {
-            level.set(BatteryLevel::Normal);
-        }
+        level.set(capacity.level());
     }
     if (temperature.changed() || is_recalculate) {
         auto t = temperature.last();
@@ -1248,8 +1280,6 @@ void Monitor::on_device(udevpp::Device &&dev)
 
 void Monitor::notify(bool is_initial)
 {
-    battery_.calculate(is_initial);
-    charging_.calculate(battery_, is_initial);
     typedef BatteryNs::Prop P;
 
     auto get_is_charging = [this](ChargingState s)
@@ -1261,26 +1291,13 @@ void Monitor::notify(bool is_initial)
         return (t == ChargerType::Absent || t == ChargerType::Unknown);
     };
 
-    set<P::Capacity>(battery_.capacity_from_energy, is_initial);
-    if (battery_.level.last() != BatteryLevel::Unknown)
-        set<P::ChargePercentage>(battery_.capacity, is_initial);
-    set<P::Energy>(battery_.energy_now, is_initial);
-    set_battery_prop<P::EnergyFull>(battery_.energy_full());
-    set<P::OnBattery>(charging_.charger_type, get_on_battery, is_initial);
-    set<P::TimeUntilLow>(battery_.time_to_low, is_initial);
-    set<P::TimeUntilFull>(battery_.time_to_full, is_initial);
-    set<P::Temperature>(battery_.temperature, is_initial);
-    set<P::Power>(battery_.power, is_initial);
-    if (battery_.level.changed() || charging_.state.changed()) {
-        auto charging_state = charging_.state.last();
-        auto bat_level = battery_.level.last();
-        std::string res{""};
+    auto set_state = [this](BatteryLevel bat_level
+                            , ChargingState charging_state) {
+        std::string res;
+        bool is_low = false;
         switch (charging_state) {
         case ChargingState::Charging:
-            if (bat_level == BatteryLevel::Low || bat_level == BatteryLevel::Empty)
-                res = "low";
-            else
-                res = "charging";
+            res = "charging";
             break;
         case ChargingState::Idle:
             res = "full";
@@ -1288,9 +1305,11 @@ void Monitor::notify(bool is_initial)
         default:
             switch (bat_level) {
             case BatteryLevel::Empty:
+                is_low = true;
                 res = "empty";
                 break;
             case BatteryLevel::Low:
+                is_low = true;
                 res = "low";
                 break;
             case BatteryLevel::Normal:
@@ -1302,8 +1321,26 @@ void Monitor::notify(bool is_initial)
             }
             break;
         }
+        set_battery_prop<P::LowBattery>(is_low);
         set_battery_prop<P::State>(res);
-    }
+    };
+
+    battery_.calculate(is_initial);
+    charging_.calculate(battery_, is_initial);
+
+    set<P::Capacity>(battery_.capacity_from_energy, is_initial);
+    if (battery_.level.last() != BatteryLevel::Unknown)
+        set<P::ChargePercentage>(battery_.capacity, is_initial);
+    set<P::Energy>(battery_.energy_now, is_initial);
+    set_battery_prop<P::EnergyFull>(battery_.energy_full());
+    set<P::OnBattery>(charging_.charger_type, get_on_battery, is_initial);
+    set<P::TimeUntilLow>(battery_.time_to_low, is_initial);
+    set<P::TimeUntilFull>(battery_.time_to_full, is_initial);
+    set<P::Temperature>(battery_.temperature, is_initial);
+    set<P::Power>(battery_.power, is_initial);
+    if (is_initial || battery_.level.changed() || charging_.state.changed())
+        set_state(battery_.level.last(), charging_.state.last());
+
     set<P::Voltage>(battery_.voltage, is_initial);
     set<P::Current>(battery_.current, is_initial);
     set<P::Level>(battery_.level, get_level_name, is_initial);

@@ -65,7 +65,7 @@ private:
 class InternetNs : public statefs::qt::Namespace
 {
 public:
-    InternetNs(QDBusConnection &bus);
+    InternetNs(QDBusConnection &bus, statefs_provider_mode);
 private:
     friend class Bridge;
     void reset_properties();

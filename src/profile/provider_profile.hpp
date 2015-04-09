@@ -42,7 +42,7 @@ private:
 class ProfileNs : public statefs::qt::Namespace
 {
 public:
-    ProfileNs(QDBusConnection &bus);
+    ProfileNs(QDBusConnection &bus, statefs_provider_mode);
 
 private:
     friend class Bridge;
