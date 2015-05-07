@@ -103,6 +103,10 @@ Obsoletes: statefs-provider-inout-mce <= 0.2.43
 Provides: statefs-provider-inout-mce = 0.2.44
 '''
 
+templates.decl_sensors = '''
+BuildRequires: pkgconfig(Qt5Sensors)
+'''
+
 templates.decl_profile = '''
 Requires: profiled >= 0.30
 Obsoletes: statefs-provider-inout-profile <= 0.2.44.99
@@ -167,6 +171,7 @@ def setup(d, target):
             , "connman" : templates.decl_connman
             , "ofono" : templates.decl_ofono
             , "mce" : templates.decl_mce
+            , "sensors" : templates.decl_sensors
             , "profile" : templates.decl_profile
         }, "default" : {
             "power_udev" : templates.decl_udev
@@ -182,6 +187,7 @@ def setup(d, target):
             , "connman" : ["internet", "network"]
             , "ofono" : "cellular"
             , "mce" : "system"
+            , "sensors" : "sensors"
             , "profile" : "profile-info"
         }, "default" : {
             "power_udev" : "power"
@@ -230,6 +236,7 @@ def setup(d, target):
             , "connman" : ", source - connman"
             , "ofono" : ", source - ofono"
             , "mce" : ", source - mce"
+            , "sensors" : ", source - sensors"
             , "profile" : ", source - profiled"
         }, "default" : {
             "power_udev" : ", source - sysfs/udev"
@@ -291,7 +298,7 @@ def setup(d, target):
         return res
 
     only_suitable = lambda pk_type, x: filter_out(pk_type, x, is_suitable)
-    d.qt5_system = only_suitable('qt5', ["bluez", "upower", "connman", "ofono", "mce"])
+    d.qt5_system = only_suitable('qt5', ["bluez", "upower", "connman", "ofono", "mce", "sensors"])
     d.qt5_user = only_suitable('qt5', ["profile"])
 
     d.default_system = only_suitable('default', ["power_udev", "bme", "back_cover", "keyboard_generic"])
