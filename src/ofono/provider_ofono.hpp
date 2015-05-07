@@ -91,7 +91,7 @@ enum class Property {
     MMSContext,
     DataRoamingAllowed,
     GPRSAttached,
-    VoiceCall, Last_ = VoiceCall
+    CapabilityVoice, Last_ = CapabilityVoice
 };
 
 struct ConnectionCache
