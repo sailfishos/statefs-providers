@@ -86,6 +86,7 @@ Requires: statefs-provider-qt5 = %{version}-%{release}
 %define p_connman -n statefs-provider-connman
 %define p_ofono -n statefs-provider-ofono
 %define p_mce -n statefs-provider-mce
+%define p_sensors -n statefs-provider-sensors
 %define p_profile -n statefs-provider-profile
 %define p_keyboard_generic -n statefs-provider-keyboard-generic
 

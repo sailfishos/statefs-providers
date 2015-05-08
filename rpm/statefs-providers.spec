@@ -86,6 +86,7 @@ Requires: statefs-provider-qt5 = %{version}-%{release}
 %define p_connman -n statefs-provider-connman
 %define p_ofono -n statefs-provider-ofono
 %define p_mce -n statefs-provider-mce
+%define p_sensors -n statefs-provider-sensors
 %define p_profile -n statefs-provider-profile
 %define p_keyboard_generic -n statefs-provider-keyboard-generic
 
@@ -179,6 +180,19 @@ Provides: contextkit-plugin-mce = %{ckit_version1}
 Provides: statefs-provider-system = %{version}-%{release}
 Conflicts: statefs-provider-inout-mode-control
 %description -n statefs-provider-mce
+%{summary}
+
+
+%package -n statefs-provider-sensors
+Summary: Statefs provider, source - sensors
+Group: System/Libraries
+Requires(post): /sbin/ldconfig
+Requires(postun): /sbin/ldconfig
+Requires: %{n_common} = %{version}-%{release}
+Requires: statefs-loader-qt5 >= 0.0.9
+BuildRequires: pkgconfig(Qt5Sensors)
+Provides: statefs-provider-sensors = %{version}-%{release}
+%description -n statefs-provider-sensors
 %{summary}
 
 
@@ -435,6 +449,7 @@ pushd inout && make install DESTDIR=%{buildroot} && popd
 %statefs_provider_install qt5 connman %{_statefs_libdir}/libprovider-connman.so system
 %statefs_provider_install qt5 ofono %{_statefs_libdir}/libprovider-ofono.so system
 %statefs_provider_install qt5 mce %{_statefs_libdir}/libprovider-mce.so system
+%statefs_provider_install qt5 sensors %{_statefs_libdir}/libprovider-sensors.so system
 
 %statefs_provider_install qt5 profile %{_statefs_libdir}/libprovider-profile.so user
 
@@ -556,6 +571,28 @@ fi
 %statefs_provider_unregister qt5 mce system
 
 %postun %{p_mce}
+/sbin/ldconfig
+%statefs_postun
+
+%files %{p_sensors} -f sensors.files
+%defattr(-,root,root,-)
+
+%pre %{p_sensors}
+%statefs_pre
+if [ -f %{_statefs_libdir}/libprovider-sensors.so ]; then
+statefs unregister %{_statefs_libdir}/libprovider-sensors.so || :
+fi
+
+%post %{p_sensors}
+/sbin/ldconfig
+%statefs_provider_register qt5 sensors system
+%statefs_post
+
+%preun %{p_sensors}
+%statefs_preun
+%statefs_provider_unregister qt5 sensors system
+
+%postun %{p_sensors}
 /sbin/ldconfig
 %statefs_postun
 

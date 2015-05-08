@@ -199,7 +199,9 @@ static interfaces_set_type get_interfaces(QStringList const &from)
  *
  * - GPRSAttached (boolean, [0, 1])
  *
- * - VoiceCall (boolean, [0, 1]) - is voice calling available
+ * - CapabilityVoice (boolean, [0, 1]) - is voice calling available
+ *
+ * - CapabilityData (boolean, [0, 1]) - is mobile data transfer available
  */
 static constexpr const char *property_names[] = {
     "SignalStrength",
@@ -221,7 +223,8 @@ static constexpr const char *property_names[] = {
     "MMSContext",
     "DataRoamingAllowed",
     "GPRSAttached",
-    "VoiceCall"
+    "CapabilityVoice",
+    "CapabilityData"
 };
 
 static_assert(sizeof(property_names)/sizeof(property_names[0])
@@ -632,8 +635,11 @@ void Bridge::process_interfaces(QStringList const &v)
     else if (cm_state == State::Reset)
         reset_connectionManager();
 
+    auto data_state = state(Interface::ConnectionManager);
+    updateProperty(Property::CapabilityData, is_set(data_state));
+
     auto voice_state = state(Interface::VoiceCallManager);
-    updateProperty(Property::VoiceCall, is_set(voice_state));
+    updateProperty(Property::CapabilityVoice, is_set(voice_state));
 }
 
 bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
@@ -986,7 +992,8 @@ MainNs::MainNs(QDBusConnection &bus, statefs_provider_mode mode)
                 , PROP_(MMSContext, "")
                 , PROP_(DataRoamingAllowed, "0")
                 , PROP_(GPRSAttached, "0")
-                , PROP_(VoiceCall, "0")
+                , PROP_(CapabilityVoice, "0")
+                , PROP_(CapabilityData, "0")
         })
 {
     // contextkit prop
