@@ -626,16 +626,21 @@ struct SystemState
     enum class Screen { Unknown, On, Off, Lost };
     SystemState()
         : screen_(Screen::Unknown)
-        , events_count_(0)
+        , events_count_{{0, 0, 0}}
+        , dtimer_(20, 10)
     {}
 
     enum class Event { First_ = 0
             , Timer = First_, Screen, Device
             , Last_ = Device };
     void on_event(Event, boost::system::error_code ec);
+    void on_next_interval(long);
+    void reset_interval() { dtimer_.clear(); }
 
     Screen screen_;
-    long events_count_;
+    std::array<long, cor::enum_size<Event>()> events_count_;
+    LastN<long> dtimer_;
+    static char const *event_name(Event);
 };
 
 class Monitor
@@ -1153,17 +1158,29 @@ void Monitor::run()
     monitor_screen(NoTimerAction);
 }
 
-void SystemState::on_event(SystemState::Event e, boost::system::error_code ec)
+char const *SystemState::event_name(SystemState::Event e)
 {
-    static const char * names[] = {
-        "Timer", "Screen", "Device"
-    };
+    static const char * names[] = { "Timer", "Screen", "Device" };
     static_assert(sizeof(names)/sizeof(names[0])
                   == cor::enum_size<SystemState::Event>()
                   , "Check event names");
-    log.debug("Event #", ++events_count_
-              , " from ", names[cor::enum_index(e)]
-              , " is ", ec);
+    return names[cor::enum_index(e)];
+}
+void SystemState::on_event(SystemState::Event e, boost::system::error_code ec)
+{
+    auto count = ++events_count_[cor::enum_index(e)];
+    log.debug("Event ", event_name(e), " #", count, "=", ec);
+}
+
+void SystemState::on_next_interval(long dt)
+{
+    dtimer_.push(dt);
+    auto count = events_count_[0] + events_count_[1] + events_count_[2];
+    if (count % 10 == 0) {
+        log.info("dt(avg)=", dtimer_.average()
+                 , ". Events(Tmr,Scr,Dev):", events_count_[0], " "
+                 , events_count_[1], " ", events_count_[2]);
+    }
 }
 
 void Monitor::timer_cancel()
@@ -1273,7 +1290,7 @@ void Monitor::on_device(udevpp::Device &&dev)
         charging_.on_charger(std::move(dev));
     } else {
         if (!charging_.maybe_charger_removed(dev)) {
-            log.warning("Device of unknown type ", t, ": ", dev.path());
+            log.debug("Device of unknown type ", t, ": ", dev.path());
         }
     }
 }
@@ -1360,8 +1377,10 @@ void Monitor::notify(bool is_initial)
         }
     } else {
         log.debug("Online status is changed");
-        dtimer_sec_ = 5;
+        system_.reset_interval();
+    dtimer_sec_ = 5;
     }
+    system_.on_next_interval(dtimer_sec_);
     battery_.on_processed();
     charging_.on_processed();
 }
