@@ -66,15 +66,14 @@ void Bridge::init_request()
         updateProperty("InternetEnabled", (v & MCE_RADIO_STATE_MASTER) != 0);
     };
 
-    request_.reset(new MceRequest(service_name, "/com/nokia/mce/request", bus_));
-    sync(request_->get_psm_state(), on_psm);
-    sync(request_->get_display_status(), on_display);
-    sync(request_->get_radio_states(), on_radio);
-    
     signal_.reset(new MceSignal(service_name, "/com/nokia/mce/signal", bus_));
     connect(signal_.get(), &MceSignal::psm_state_ind, on_psm);
     connect(signal_.get(), &MceSignal::display_status_ind, on_display);
     connect(signal_.get(), &MceSignal::radio_states_ind, on_radio);
+    request_.reset(new MceRequest(service_name, "/com/nokia/mce/request", bus_));
+    sync(request_->get_psm_state(), on_psm);
+    sync(request_->get_display_status(), on_display);
+    sync(request_->get_radio_states(), on_radio);
 }
 
 void Bridge::init()
