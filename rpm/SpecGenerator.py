@@ -101,6 +101,8 @@ templates.decl_mce = '''
 BuildRequires: pkgconfig(mce)
 Obsoletes: statefs-provider-inout-mce <= 0.2.43
 Provides: statefs-provider-inout-mce = 0.2.44
+Obsoletes: statefs-provider-keyboard-generic <= 0.2.73
+Provides: statefs-provider-keyboard-generic = 0.2.74
 '''
 
 templates.decl_sensors = '''
@@ -141,7 +143,7 @@ def setup(d, target):
     udev_conflicts = [ "upower", "inout-power" ]
     udev_aux = ""
     if target == "mer":
-        filters = ['.*upower']
+        filters = ['.*upower', '.*keyboard_generic']
         make_options = "-DENABLE_UPOWER=OFF"
         udev_aux = templates.decl_udev_mer
         udev_conflicts = [ "inout-power" ]

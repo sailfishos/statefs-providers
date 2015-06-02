@@ -173,6 +173,8 @@ Requires: statefs-loader-qt5 >= 0.0.9
 BuildRequires: pkgconfig(mce)
 Obsoletes: statefs-provider-inout-mce <= 0.2.43
 Provides: statefs-provider-inout-mce = 0.2.44
+Obsoletes: statefs-provider-keyboard-generic <= 0.2.73
+Provides: statefs-provider-keyboard-generic = 0.2.74
 Obsoletes: contextkit-maemo-mce <= %{maemo_ver}
 Provides: contextkit-maemo-mce = %{maemo_ver1}
 Obsoletes: contextkit-plugin-mce <= %{ckit_version}
@@ -268,20 +270,6 @@ Group: System/Libraries
 Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 %description -n statefs-provider-back-cover
-%{summary}
-
-
-%package -n statefs-provider-keyboard-generic
-Summary: Statefs provider, source - sysfs/udev
-Group: System/Libraries
-Requires(post): /sbin/ldconfig
-Requires(postun): /sbin/ldconfig
-BuildRequires: pkgconfig(cor-udev) >= 0.1.14
-Obsoletes: contextkit-plugin-keyboard-generic <= %{ckit_version}
-Provides: contextkit-plugin-keyboard-generic = %{ckit_version1}
-Provides: statefs-provider-keyboard = %{version}-%{release}
-Conflicts: statefs-provider-inout-keyboard
-%description -n statefs-provider-keyboard-generic
 %{summary}
 
 
@@ -441,8 +429,6 @@ pushd inout && make install DESTDIR=%{buildroot} && popd
 %statefs_provider_install default bme %{_statefs_libdir}/libprovider-bme.so system
 
 %statefs_provider_install default back_cover %{_statefs_libdir}/libprovider-back_cover.so system
-
-%statefs_provider_install default keyboard_generic %{_statefs_libdir}/libprovider-keyboard_generic.so system
 
 
 %statefs_provider_install qt5 bluez %{_statefs_libdir}/libprovider-bluez.so system
@@ -672,25 +658,6 @@ fi
 %statefs_provider_unregister default back_cover system
 
 %postun %{p_back_cover}
-/sbin/ldconfig
-%statefs_postun
-
-%files %{p_keyboard_generic} -f keyboard_generic.files
-%defattr(-,root,root,-)
-
-%pre %{p_keyboard_generic}
-%statefs_pre
-
-%post %{p_keyboard_generic}
-/sbin/ldconfig
-%statefs_provider_register default keyboard_generic system
-%statefs_post
-
-%preun %{p_keyboard_generic}
-%statefs_preun
-%statefs_provider_unregister default keyboard_generic system
-
-%postun %{p_keyboard_generic}
 /sbin/ldconfig
 %statefs_postun
 
