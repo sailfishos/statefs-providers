@@ -77,10 +77,10 @@ void Bridge::init_request()
     connect(signal_.get(), &MceSignal::keyboard_available_state_ind, on_keyboard);
 
     request_.reset(new MceRequest(service_name, "/com/nokia/mce/request", bus_));
-    sync(request_->get_psm_state(), on_psm);
-    sync(request_->get_display_status(), on_display);
-    sync(request_->get_radio_states(), on_radio);
-    sync(request_->keyboard_available_state_req(), on_keyboard);
+    async(this, request_->get_psm_state(), on_psm);
+    async(this, request_->get_display_status(), on_display);
+    async(this, request_->get_radio_states(), on_radio);
+    async(this, request_->keyboard_available_state_req(), on_keyboard);
 }
 
 void Bridge::init()
