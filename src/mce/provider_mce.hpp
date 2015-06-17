@@ -22,6 +22,10 @@ using qtaround::dbus::ServiceWatch;
 
 class MceNs;
 
+enum class Property { First_ = 0,
+        Blanked = First_, KeyboardPresent, KeyboardOpen
+        , Last_ = KeyboardOpen };
+
 class Bridge : public QObject, public statefs::qt::PropertiesSource
 {
     Q_OBJECT;
@@ -42,20 +46,25 @@ private:
 };
 
 class ScreenNs;
+class KeyboardNs;
 
 class MceNs : public statefs::qt::Namespace
 {
 public:
-    MceNs(QDBusConnection &bus, std::shared_ptr<ScreenNs> const &
+    MceNs(QDBusConnection &bus
+          , std::shared_ptr<ScreenNs> const &
+          , std::shared_ptr<KeyboardNs> const &
           , statefs_provider_mode);
 
 private:
     friend class Bridge;
-    void set_blanked(bool);
+    void set(Property, bool);
     void reset_properties();
 
     std::shared_ptr<ScreenNs> screen_;
+    std::shared_ptr<KeyboardNs> keyboard_;
     statefs::qt::DefaultProperties defaults_;
+    std::array<statefs::setter_type, cor::enum_size<Property>()> setters_;
 };
 
 class ScreenNs : public statefs::Namespace
@@ -66,9 +75,19 @@ public:
     virtual void release() { }
 private:
     friend class MceNs;
-    void set_blanked(bool);
-
     statefs::setter_type set_blanked_;
+};
+
+class KeyboardNs : public statefs::Namespace
+{
+public:
+    KeyboardNs();
+    virtual ~KeyboardNs() {}
+    virtual void release() { }
+private:
+    friend class MceNs;
+    statefs::setter_type set_open_;
+    statefs::setter_type set_present_;
 };
 
 }}

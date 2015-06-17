@@ -1,8 +1,7 @@
 /*
  * StateFS MCE provider
  *
- * Copyright (C) 2013 Jolla Ltd.
- * Contact: Denis Zalevskiy <denis.zalevskiy@jollamobile.com>
+ * Copyright (C) 2013-2015 Jolla Ltd.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -55,9 +54,9 @@ void Bridge::init_request()
     auto on_psm = [this](bool v) {
         updateProperty("PowerSaveMode", v);
     };
-    auto on_display = [this, ns](QString const& v) {
+    auto on_display = [ns](QString const& v) {
         qDebug() << "Display:" << v;
-        ns->set_blanked(v == "off");
+        ns->set(Property::Blanked, v == "off");
     };
 
     auto on_radio = [this, ns](unsigned v) {
@@ -65,16 +64,23 @@ void Bridge::init_request()
         updateProperty("WlanEnabled", (v & MCE_RADIO_STATE_WLAN) != 0);
         updateProperty("InternetEnabled", (v & MCE_RADIO_STATE_MASTER) != 0);
     };
+    auto on_keyboard = [ns](QString const &v) {
+        auto is_available = (v == "available");
+        ns->set(Property::KeyboardPresent, is_available);
+        ns->set(Property::KeyboardOpen, is_available);
+    };
 
-    request_.reset(new MceRequest(service_name, "/com/nokia/mce/request", bus_));
-    sync(request_->get_psm_state(), on_psm);
-    sync(request_->get_display_status(), on_display);
-    sync(request_->get_radio_states(), on_radio);
-    
     signal_.reset(new MceSignal(service_name, "/com/nokia/mce/signal", bus_));
     connect(signal_.get(), &MceSignal::psm_state_ind, on_psm);
     connect(signal_.get(), &MceSignal::display_status_ind, on_display);
     connect(signal_.get(), &MceSignal::radio_states_ind, on_radio);
+    connect(signal_.get(), &MceSignal::keyboard_available_state_ind, on_keyboard);
+
+    request_.reset(new MceRequest(service_name, "/com/nokia/mce/request", bus_));
+    async(this, request_->get_psm_state(), on_psm);
+    async(this, request_->get_display_status(), on_display);
+    async(this, request_->get_radio_states(), on_radio);
+    async(this, request_->keyboard_available_state_req(), on_keyboard);
 }
 
 void Bridge::init()
@@ -88,23 +94,30 @@ void Bridge::init()
 }
 
 
-MceNs::MceNs(QDBusConnection &bus, std::shared_ptr<ScreenNs> const &screen
+MceNs::MceNs(QDBusConnection &bus
+             , std::shared_ptr<ScreenNs> const &screen
+             , std::shared_ptr<KeyboardNs> const &keyboard
              , statefs_provider_mode mode)
     : Namespace("System", make_proper_source<Bridge>(mode, this, bus))
     , screen_(screen)
+    , keyboard_(keyboard)
     , defaults_({{"PowerSaveMode", "0"}
             , {"OfflineMode", "0"}
             , {"InternetEnabled", "1"}
             , {"WlanEnabled", "0"}})
 {
+    setters_[cor::enum_index(Property::Blanked)] = screen_->set_blanked_;
+    setters_[cor::enum_index(Property::KeyboardPresent)] = keyboard_->set_present_;
+    setters_[cor::enum_index(Property::KeyboardOpen)] = keyboard_->set_open_;
+
     for (auto v : defaults_)
         addProperty(v.first, v.second);
     src_->init();
 }
 
-void MceNs::set_blanked(bool v)
+void MceNs::set(Property id, bool v)
 {
-    screen_->set_blanked(v);
+    setters_[cor::enum_index(id)](v ? "1" : "0");
 }
 
 ScreenNs::ScreenNs()
@@ -116,14 +129,21 @@ ScreenNs::ScreenNs()
     set_blanked_ = setter(prop);
 }
 
-void ScreenNs::set_blanked(bool v)
-{
-    set_blanked_(v ? "1" : "0");
-}
-
 void MceNs::reset_properties()
 {
     setProperties(defaults_);
+}
+
+KeyboardNs::KeyboardNs()
+    : Namespace("maemo_InternalKeyboard")
+{
+    auto present = statefs::create(statefs::Discrete("Present", "0"));
+    *this << present;
+    set_present_ = setter(present);
+
+    auto open = statefs::create(statefs::Discrete("Open", "0"));
+    *this << open;
+    set_open_ = setter(open);
 }
 
 class Provider;
@@ -137,11 +157,13 @@ public:
         , bus_(QDBusConnection::systemBus())
     {
         auto screen_ns = std::make_shared<ScreenNs>();
+        auto keyboard_ns = std::make_shared<KeyboardNs>();
         auto ns = std::make_shared<MceNs>
-            (bus_, screen_ns, server
+            (bus_, screen_ns, keyboard_ns, server
              ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
         insert(std::static_pointer_cast<statefs::ANode>(screen_ns));
+        insert(std::static_pointer_cast<statefs::ANode>(keyboard_ns));
     }
     virtual ~Provider() {}
 

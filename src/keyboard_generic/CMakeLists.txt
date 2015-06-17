@@ -41,4 +41,6 @@ target_link_libraries(provider-${SELF}
   ${Boost_SYSTEM_LIBRARY}
   )
 
-install(TARGETS provider-${SELF} DESTINATION ${DST_LIB}/statefs)
+if (NOT USE_MCE_KEYBOARD_INFO)
+  install(TARGETS provider-${SELF} DESTINATION ${DST_LIB}/statefs)
+endif()
