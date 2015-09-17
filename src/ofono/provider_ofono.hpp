@@ -44,6 +44,27 @@ typedef OrgOfonoConnectionContextInterface ConnectionContext;
 
 using qtaround::dbus::ServiceWatch;
 
+
+class ModemManager : public QObject
+{
+    Q_OBJECT
+public:
+    ModemManager(QDBusConnection &bus, QObject *parent = 0);
+
+    void init();
+
+signals:
+    void modem_added(const QString &, QVariantMap const&);
+    void modem_removed(const QString &path);
+    void reset();
+
+private:
+    std::unique_ptr<Manager> manager_;
+    ServiceWatch watch_;
+    QDBusConnection &bus_;
+};
+
+
 enum class Interface {
     AssistedSatelliteNavigation,
     First_ = AssistedSatelliteNavigation,
@@ -97,7 +118,8 @@ enum class Property {
     CapabilityVoice,
     CapabilityData,
     CallCount,
-    Last_ = CallCount
+    ModemPath,
+    Last_ = ModemPath
 };
 
 struct ConnectionCache
@@ -116,7 +138,7 @@ class Bridge : public QObject, public PropertiesSource
 {
     Q_OBJECT
 public:
-    Bridge(MainNs *, QDBusConnection &bus);
+    Bridge(MainNs *, QDBusConnection &bus, ModemManager *manager, const QRegularExpression &modem_pattern);
 
     virtual ~Bridge() {}
 
@@ -125,7 +147,7 @@ public:
     typedef std::function<void(Bridge*, QVariant const&)> property_action_type;
     typedef std::map<QString, property_action_type> property_map_type;
 
-    enum class Status { First_ = 0, Offline = First_
+    enum class Status { First_ = 0, Disabled = First_, Offline
             , Registered, Searching, Denied, Unknown, Roaming
             , Last_ = Roaming
             };
@@ -157,10 +179,11 @@ private:
     void setup_network(QString const &);
     void setup_stk(QString const &);
     void setup_connectionManager(QString const &);
+    void reset();
     void reset_sim();
     void reset_callManager();
     void reset_network();
-    void reset_modem();
+    void reset_modem(const QString &path);
     void reset_stk();
     void reset_connectionManager();
     void reset_props();
@@ -170,7 +193,6 @@ private:
 
     QDBusConnection &bus_;
     interfaces_set_type interfaces_;
-    std::unique_ptr<Manager> manager_;
     std::unique_ptr<Modem> modem_;
     std::unique_ptr<Network> network_;
     std::unique_ptr<Operator> operator_;
@@ -180,7 +202,6 @@ private:
     std::unique_ptr<ConnectionManager> connectionManager_;
     std::map<QString,ConnectionCache> connectionContexts_;
     std::set<QString> calls_;
-    ServiceWatch watch_;
 
     SimPresent sim_present_;
     bool supports_stk_;
@@ -188,6 +209,7 @@ private:
     std::pair<QString, QString> network_name_;
     void (Bridge::*set_name_)();
 
+    QRegularExpression modem_pattern_;
     QString modem_path_;
     QString operator_path_;
     QString mmsContext_;
@@ -202,7 +224,7 @@ using statefs::qt::Namespace;
 class MainNs : public statefs::qt::Namespace
 {
 public:
-    MainNs(QDBusConnection &bus, statefs_provider_mode);
+    MainNs(QDBusConnection &bus, const char *name, ModemManager *manager, const QRegularExpression &modem_pattern, statefs_provider_mode);
 
     template <typename T>
     void updateProperty(Property id, T &&value)
