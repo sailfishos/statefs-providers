@@ -10,6 +10,7 @@
 #include "qdbusxml2cpp_manager_interface.h"
 #include "qdbusxml2cpp_net_interface.h"
 #include "qdbusxml2cpp_sim_interface.h"
+#include "qdbusxml2cpp_call_interface.h"
 #include "qdbusxml2cpp_stk_interface.h"
 #include "qdbusxml2cpp_connectionmanager_interface.h"
 #include "qdbusxml2cpp_connectioncontext_interface.h"
@@ -26,6 +27,7 @@
 #include <QObject>
 
 #include <map>
+#include <set>
 #include <bitset>
 
 namespace statefs { namespace ofono {
@@ -35,6 +37,7 @@ typedef OrgOfonoNetworkRegistrationInterface Network;
 typedef OrgOfonoNetworkOperatorInterface Operator;
 typedef OrgOfonoModemInterface Modem;
 typedef OrgOfonoSimManagerInterface SimManager;
+typedef OrgOfonoVoiceCallManagerInterface VoiceCallManager;
 typedef OrgOfonoSimToolkitInterface SimToolkit;
 typedef OrgOfonoConnectionManagerInterface ConnectionManager;
 typedef OrgOfonoConnectionContextInterface ConnectionContext;
@@ -92,7 +95,9 @@ enum class Property {
     DataRoamingAllowed,
     GPRSAttached,
     CapabilityVoice,
-    CapabilityData, Last_ = CapabilityData
+    CapabilityData,
+    CallCount,
+    Last_ = CallCount
 };
 
 struct ConnectionCache
@@ -148,10 +153,12 @@ private:
     bool setup_modem(QString const &, QVariantMap const&);
     bool setup_operator(QString const &, QVariantMap const&);
     void setup_sim(QString const &);
+    void setup_callManager(QString const &);
     void setup_network(QString const &);
     void setup_stk(QString const &);
     void setup_connectionManager(QString const &);
     void reset_sim();
+    void reset_callManager();
     void reset_network();
     void reset_modem();
     void reset_stk();
@@ -168,9 +175,11 @@ private:
     std::unique_ptr<Network> network_;
     std::unique_ptr<Operator> operator_;
     std::unique_ptr<SimManager> sim_;
+    std::unique_ptr<VoiceCallManager> callManager_;
     std::unique_ptr<SimToolkit> stk_;
     std::unique_ptr<ConnectionManager> connectionManager_;
     std::map<QString,ConnectionCache> connectionContexts_;
+    std::set<QString> calls_;
     ServiceWatch watch_;
 
     SimPresent sim_present_;
