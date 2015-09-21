@@ -979,10 +979,7 @@ void Bridge::setup_sim(QString const &path)
 
 void Bridge::setup_callManager(QString const &path)
 {
-    qDebug() << "Get call properties";
-    auto update = [this](QString const &n, QVariant const &v) {
-        DBG() << "call prop: " << n << "=" << v;
-    };
+    qDebug() << "Setup VoiceCallManager";
 
     auto process_calls = [this](PathPropertiesArray const &calls) {
         for (auto it = calls.begin(); it != calls.end(); ++it)
@@ -991,10 +988,6 @@ void Bridge::setup_callManager(QString const &path)
     };
 
     callManager_.reset(new VoiceCallManager(service_name, path, bus_));
-    connect(callManager_.get(), &VoiceCallManager::PropertyChanged
-            , [update](QString const &n, QDBusVariant const &v) {
-                update(n, v.variant());
-            });
 
     connect(callManager_.get(), &VoiceCallManager::CallAdded
             , [this](QDBusObjectPath const &n, QVariantMap const &) {
@@ -1007,16 +1000,6 @@ void Bridge::setup_callManager(QString const &path)
                     calls_.erase(n.path());
                     updateProperty(Property::CallCount, calls_.size());
             });
-
-    auto res = sync(callManager_->GetProperties());
-    if (res.isError()) {
-        qWarning() << "VoiceCallManager GetProperties error:" << res.error();
-        return;
-    }
-
-    auto props = res.value();
-    for (auto it = props.begin(); it != props.end(); ++it)
-        update(it.key(), it.value());
 
     async(this, callManager_->GetCalls(), process_calls);
 }
