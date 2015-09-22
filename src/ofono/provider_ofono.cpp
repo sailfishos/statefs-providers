@@ -202,6 +202,9 @@ static interfaces_set_type get_interfaces(QStringList const &from)
  * - CapabilityVoice (boolean, [0, 1]) - is voice calling available
  *
  * - CapabilityData (boolean, [0, 1]) - is mobile data transfer available
+ *
+ * - CallCount (integer)
+ *
  */
 static constexpr const char *property_names[] = {
     "SignalStrength",
@@ -224,7 +227,8 @@ static constexpr const char *property_names[] = {
     "DataRoamingAllowed",
     "GPRSAttached",
     "CapabilityVoice",
-    "CapabilityData"
+    "CapabilityData",
+    "CallCount"
 };
 
 static_assert(sizeof(property_names)/sizeof(property_names[0])
@@ -573,6 +577,15 @@ void Bridge::reset_sim()
     reset_props();
 }
 
+void Bridge::reset_callManager()
+{
+    qDebug() << "Reset VoiceCallManager properties";
+    callManager_.reset();
+    calls_.clear();
+    interfaces_.reset((size_t)Interface::VoiceCallManager);
+    updateProperty(Property::CallCount, 0);
+}
+
 void Bridge::reset_network()
 {
     qDebug() << "Reset cellular network properties";
@@ -638,8 +651,13 @@ void Bridge::process_interfaces(QStringList const &v)
     auto data_state = state(Interface::ConnectionManager);
     updateProperty(Property::CapabilityData, is_set(data_state));
 
-    auto voice_state = state(Interface::VoiceCallManager);
-    updateProperty(Property::CapabilityVoice, is_set(voice_state));
+    auto calls_state = state(Interface::VoiceCallManager);
+    if (calls_state == State::Set)
+        setup_callManager(modem_path_);
+    else if (calls_state == State::Reset)
+        reset_callManager();
+
+    updateProperty(Property::CapabilityVoice, is_set(calls_state));
 }
 
 bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
@@ -760,6 +778,8 @@ void Bridge::init()
         stk_.reset();
         sim_.reset();
         sim_present_ = SimPresent::Unknown;
+        callManager_.reset();
+        calls_.clear();
         modem_.reset();
         manager_.reset();
         interfaces_.reset();
@@ -957,6 +977,33 @@ void Bridge::setup_sim(QString const &path)
         setup_stk(modem_path_);
 }
 
+void Bridge::setup_callManager(QString const &path)
+{
+    qDebug() << "Setup VoiceCallManager";
+
+    auto process_calls = [this](PathPropertiesArray const &calls) {
+        for (auto it = calls.begin(); it != calls.end(); ++it)
+            calls_.insert(std::get<0>(*it).path());
+        updateProperty(Property::CallCount, calls_.size());
+    };
+
+    callManager_.reset(new VoiceCallManager(service_name, path, bus_));
+
+    connect(callManager_.get(), &VoiceCallManager::CallAdded
+            , [this](QDBusObjectPath const &n, QVariantMap const &) {
+                    calls_.insert(n.path());
+                    updateProperty(Property::CallCount, calls_.size());
+            });
+
+    connect(callManager_.get(), &VoiceCallManager::CallRemoved
+            , [this](QDBusObjectPath const &n) {
+                    calls_.erase(n.path());
+                    updateProperty(Property::CallCount, calls_.size());
+            });
+
+    async(this, callManager_->GetCalls(), process_calls);
+}
+
 void MainNs::resetProperties(Bridge::Status status, SimPresent sim)
 {
     qDebug() << "Reset properties";
@@ -994,6 +1041,7 @@ MainNs::MainNs(QDBusConnection &bus, statefs_provider_mode mode)
                 , PROP_(GPRSAttached, "0")
                 , PROP_(CapabilityVoice, "0")
                 , PROP_(CapabilityData, "0")
+                , PROP_(CallCount, "0")
         })
 {
     // contextkit prop
