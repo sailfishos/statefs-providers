@@ -106,6 +106,60 @@ static QDebug operator << (QDebug dst, interfaces_set_type const &src)
     return dst;
 }
 
+
+ModemManager::ModemManager(QDBusConnection &bus, QObject *parent)
+    : QObject(parent)
+    , watch_(bus, service_name)
+    , bus_(bus)
+{
+}
+
+void ModemManager::init()
+{
+    qDebug() << "Establish connection with ofono";
+
+    auto process_modems = [this](PathPropertiesArray const &modems) {
+        if (!manager_) {
+            qDebug() << "Manager is reset, do not enumerate modems";
+            return;
+        }
+        qDebug() << "There is(are) " << modems.size() << " modems";
+        if (!modems.size())
+            return;
+
+        using namespace std::placeholders;
+        connect(manager_.get(), &Manager::ModemAdded
+                , [this](QDBusObjectPath const &n, QVariantMap const&p) {
+                    emit modem_added(n.path(), p);
+                });
+        connect(manager_.get(), &Manager::ModemRemoved
+                , [this](QDBusObjectPath const &n) {
+                    emit modem_removed(n.path());
+                });
+
+        for (auto it = modems.begin(); it != modems.end(); ++it) {
+            auto const &info = *it;
+            auto path = std::get<0>(info).path();
+            auto props = std::get<1>(info);
+            emit modem_added(path, props);
+        }
+    };
+
+    auto connect_manager = [this, process_modems]() {
+        manager_.reset(new Manager(service_name, "/", bus_));
+        async(this, manager_->GetModems(), process_modems);
+    };
+
+    auto reset_manager = [this]() {
+        qDebug() << "Ofono is unregistered, cleaning up";
+        emit reset();
+    };
+    watch_.init(connect_manager, reset_manager);
+    connect_manager();
+}
+
+
+
 #define MK_IFACE_ID(name) {#name, Interface::name}
 
 static const std::map<QString, Interface> interface_ids = {
@@ -166,9 +220,10 @@ static interfaces_set_type get_interfaces(QStringList const &from)
  *
  * - Sim (string, [present, absent, ]) - SIM cqard presence if known
  *
- * - Status (string, [unregistered, registered, searching, denied,
+ * - Status (string, [disabled, unregistered, registered, searching, denied,
  *   unknown, roaming]) - cellular registration status compatible with
- *   ofono values set
+ *   ofono values set, with the exception of "disabled" which indicates that
+ *   the modem interface is not present.
  *
  * - Technology (string, [gsm, umts, lte]) - cellular technology
  *
@@ -205,6 +260,7 @@ static interfaces_set_type get_interfaces(QStringList const &from)
  *
  * - CallCount (integer)
  *
+ * - ModemPath (string)
  */
 static constexpr const char *property_names[] = {
     "SignalStrength",
@@ -228,7 +284,8 @@ static constexpr const char *property_names[] = {
     "GPRSAttached",
     "CapabilityVoice",
     "CapabilityData",
-    "CallCount"
+    "CallCount",
+    "ModemPath"
 };
 
 static_assert(sizeof(property_names)/sizeof(property_names[0])
@@ -330,7 +387,7 @@ typedef Bridge::Status Status;
 QDebug & operator << (QDebug &dst, Status src)
 {
     static const char *names[] = {
-        "Offline", "Registered", "Searching"
+        "Disabled", "Offline", "Registered", "Searching"
         , "Denied", "Unknown", "Roaming"
     };
     static_assert(sizeof(names)/sizeof(names[0]) == cor::enum_size<Status>()
@@ -353,7 +410,8 @@ static const tech_map_type tech_map_ = {
 };
 
 static const status_map_type status_map_ = {
-    {"unregistered", Status::Offline}
+    {"", Status::Disabled}
+    , {"unregistered", Status::Offline}
     , {"registered", Status::Registered}
     , {"searching", Status::Searching}
     , {"denied", Status::Denied}
@@ -370,7 +428,7 @@ Status Bridge::map_status(QString const &name)
 QString const & Bridge::ckit_status(Status status, SimPresent sim)
 {
     static const QString names[] = {
-        "offline", "home"
+        "disabled", "offline", "home"
         , "offline", "forbidden", "offline", "roam"
     };
     static const QString no_sim("no-sim");
@@ -386,7 +444,7 @@ QString const & Bridge::ckit_status(Status status, SimPresent sim)
 QString const & Bridge::ofono_status(Status status)
 {
     static const QString names[] = {
-            "unregistered", "registered"
+            "disabled", "unregistered", "registered"
             , "searching", "denied", "unknown", "roaming"
         };
     static_assert(sizeof(names)/sizeof(names[0]) == cor::enum_size<Status>()
@@ -460,15 +518,32 @@ const Bridge::property_map_type Bridge::connman_property_actions_ = {
     , { "Attached", direct_update(Property::GPRSAttached) }
 };
 
-Bridge::Bridge(MainNs *ns, QDBusConnection &bus)
+Bridge::Bridge(MainNs *ns, QDBusConnection &bus, ModemManager *manager, const QRegularExpression &modem_pattern)
     : PropertiesSource(ns)
     , bus_(bus)
-    , watch_(bus, service_name)
     , sim_present_(SimPresent::Unknown)
     , status_(Status::Unknown)
     , network_name_{"", ""}
     , set_name_(&Bridge::set_name_home)
+    , modem_pattern_(modem_pattern)
 {
+    connect(manager, &ModemManager::modem_added, this, &Bridge::setup_modem);
+    connect(manager, &ModemManager::modem_removed, this, &Bridge::reset_modem);
+    connect(manager, &ModemManager::reset, this, &Bridge::reset);
+}
+
+void Bridge::reset()
+{
+    network_.reset();
+    operator_.reset();
+    stk_.reset();
+    sim_.reset();
+    sim_present_ = SimPresent::Unknown;
+    callManager_.reset();
+    calls_.clear();
+    modem_.reset();
+    interfaces_.reset();
+    reset_props();
 }
 
 void Bridge::set_network_name(QVariant const &v)
@@ -554,18 +629,20 @@ void Bridge::update_mms_context()
 
 void Bridge::reset_props()
 {
-    static const auto status = Status::Offline;
+    static const auto status = Status::Disabled;
     set_status(status);
     static_cast<MainNs*>(target_)->resetProperties(status, sim_present_);
 }
 
-void Bridge::reset_modem()
+void Bridge::reset_modem(const QString &path)
 {
-    qDebug() << "Reset modem properties";
-    modem_path_ = "";
-    modem_.reset();
-    reset_connectionManager();
-    reset_props();
+    if (path.isEmpty() || path == modem_path_) {
+        qDebug() << "Reset modem properties" << path;
+        modem_path_ = "";
+        modem_.reset();
+        reset_connectionManager();
+        reset_props();
+    }
 }
 
 void Bridge::reset_sim()
@@ -662,11 +739,23 @@ void Bridge::process_interfaces(QStringList const &v)
 
 bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
 {
+    if (!modem_path_.isEmpty()) {
+        // Already handling a different modem.
+        return false;
+    }
+
     if (props["Type"].toString() != "hardware") {
         // TODO hardcoded for phones now, no support for e.g. DUN
         return false;
     }
-    qDebug() << "Hardware modem " << path;
+
+    QRegularExpressionMatch match = modem_pattern_.match(path);
+    if (!match.hasMatch()) {
+        // This modem doesn't match the pattern we want
+        return false;
+    }
+
+    qDebug() << "Hardware modem " << path << modem_pattern_.pattern();
 
     auto update = [this](QString const &n, QVariant const &v) {
         DBG() << "Modem prop: " << n << "=" << v;
@@ -689,6 +778,9 @@ bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
             });
     for (auto it = props.begin(); it != props.end(); ++it)
         update(it.key(), it.value());
+
+    updateProperty(Property::ModemPath, path);
+
     return true;
 }
 
@@ -742,51 +834,6 @@ bool Bridge::setup_operator(QString const &path, QVariantMap const &props)
 
 void Bridge::init()
 {
-    qDebug() << "Establish connection with ofono";
-
-    auto process_modems = [this](PathPropertiesArray const &modems) {
-        if (!manager_) {
-            qDebug() << "Manager is reset, do not enumerate modems";
-            return;
-        }
-        qDebug() << "There is(are) " << modems.size() << " modems";
-        if (!modems.size())
-            return;
-
-        using namespace std::placeholders;
-        connect(manager_.get(), &Manager::ModemAdded
-                , [this](QDBusObjectPath const &n, QVariantMap const&p) {
-                    setup_modem(n.path(), p);
-                });
-        connect(manager_.get(), &Manager::ModemRemoved
-                , [this](QDBusObjectPath const &n) {
-                    if (n.path() == modem_path_)
-                        reset_modem();
-                });
-        find_process_object(modems, std::bind(&Bridge::setup_modem, this, _1, _2));
-    };
-
-    auto connect_manager = [this, process_modems]() {
-        manager_.reset(new Manager(service_name, "/", bus_));
-        async(this, manager_->GetModems(), process_modems);
-    };
-
-    auto reset_manager = [this]() {
-        qDebug() << "Ofono is unregistered, cleaning up";
-        network_.reset();
-        operator_.reset();
-        stk_.reset();
-        sim_.reset();
-        sim_present_ = SimPresent::Unknown;
-        callManager_.reset();
-        calls_.clear();
-        modem_.reset();
-        manager_.reset();
-        interfaces_.reset();
-        reset_props();
-    };
-    watch_.init(connect_manager, reset_manager);
-    connect_manager();
 }
 
 void Bridge::setup_network(QString const &path)
@@ -1019,12 +1066,12 @@ void MainNs::resetProperties(Bridge::Status status, SimPresent sim)
 
 #define PROP_(prop_name, value) { Bridge::name(Property::prop_name), value }
 
-MainNs::MainNs(QDBusConnection &bus, statefs_provider_mode mode)
-    : Namespace("Cellular", make_proper_source<Bridge>(mode, this, bus))
+MainNs::MainNs(QDBusConnection &bus, const char *name, ModemManager *manager, const QRegularExpression &modem_pattern, statefs_provider_mode mode)
+    : Namespace(name, make_proper_source<Bridge>(mode, this, bus, manager, modem_pattern))
     , defaults_({
             PROP_(SignalStrength, "0")
                 , PROP_(DataTechnology, "unknown")
-                , PROP_(Status, "unregistered") // ofono
+                , PROP_(Status, "disabled")
                 , PROP_(Technology, "unknown")
                 , PROP_(SignalBars, "0")
                 , PROP_(CellName, "")
@@ -1042,6 +1089,7 @@ MainNs::MainNs(QDBusConnection &bus, statefs_provider_mode mode)
                 , PROP_(CapabilityVoice, "0")
                 , PROP_(CapabilityData, "0")
                 , PROP_(CallCount, "0")
+                , PROP_(ModemPath, "")
         })
 {
     // contextkit prop
@@ -1068,9 +1116,23 @@ public:
         : AProvider("ofono", server)
         , bus_(QDBusConnection::systemBus())
     {
+        if (!server || server->mode == statefs_provider_mode_run)
+            manager_.reset(new ModemManager(bus_));
+
+        // We need the modem order to be static, so we look for modems with _0 and _1, or phonesim.
+        // Perhaps needs a config file, or perhaps we'll get a new ofono API. This will do for now.
         auto ns = std::make_shared<MainNs>
-            (bus_, server ? server->mode : statefs_provider_mode_run);
+            (bus_, "Cellular", manager_.get(), QRegularExpression(QStringLiteral(".*(_0|phonesim)$"))
+             , server ? server->mode : statefs_provider_mode_run);
         insert(std::static_pointer_cast<statefs::ANode>(ns));
+
+        ns = std::make_shared<MainNs>
+            (bus_, "Cellular_1", manager_.get(), QRegularExpression(QStringLiteral(".*(_1|phonesim)$"))
+             , server ? server->mode : statefs_provider_mode_run);
+        insert(std::static_pointer_cast<statefs::ANode>(ns));
+
+        if (manager_)
+            manager_->init();
     }
     virtual ~Provider() {}
 
@@ -1083,6 +1145,7 @@ public:
 
 private:
     QDBusConnection bus_;
+    std::unique_ptr<ModemManager> manager_;
 };
 
 static inline Provider *init_provider(statefs_server *server)
