@@ -21,6 +21,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 pkg_check_modules(STATEFS statefs-cpp REQUIRED)
 pkg_check_modules(STATEFS_QT5 statefs-qt5 REQUIRED)
 pkg_check_modules(QTAROUND_DBUS qtaround-dbus REQUIRED)
+pkg_check_modules(QTAROUND qtaround REQUIRED)
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/include

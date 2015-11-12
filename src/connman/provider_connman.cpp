@@ -26,6 +26,7 @@
 #include <math.h>
 #include <iostream>
 #include <qtaround/dbus.hpp>
+#include <qtaround/debug.hpp>
 #include "qdbusxml2cpp_dbus_types.hpp"
 
 namespace statefs { namespace connman {
@@ -35,6 +36,7 @@ using statefs::qt::PropertiesSource;
 using statefs::qt::make_proper_source;
 using qtaround::dbus::sync;
 using qtaround::dbus::async;
+namespace debug = qtaround::debug;
 
 static char const *service_name = "net.connman";
 
@@ -62,9 +64,10 @@ void Bridge::process_manager_props(QVariantMap const &props)
 {
 
     auto update = [this](QString const &n, QVariant const &v) {
+        debug::debug("Network manager", n, "=", v);
         if (n == "State") {
             auto state = v.toString();
-            qDebug() << "Network manager is " << state;
+            debug::print("Network manager is", state);
             if (state_map_[state] == Status::Online) {
                 process_services();
                 process_technologies();
@@ -75,27 +78,27 @@ void Bridge::process_manager_props(QVariantMap const &props)
     };
     connect(manager_.get(), &Manager::PropertyChanged
             , [update] (QString const &n, QDBusVariant const &v) {
-                qDebug() << "Manager property " << n;
+                debug::info("Manager property ", n);
                 update(n, v.variant());
             });
     connect(manager_.get(), &Manager::TechnologyAdded
             , [this] (const QDBusObjectPath &path, const QVariantMap &props) {
-                qDebug() << "Technology added " << path.path();
+                debug::info("Technology added", path.path());
                 process_technology(path.path(), props);
             });
     connect(manager_.get(), &Manager::TechnologyRemoved
             , [this] (const QDBusObjectPath &path) {
-                qDebug() << "Technology removed " << path.path();
+                debug::info("Technology removed", path.path());
                 process_technologies();
             });
     connect(manager_.get(), &Manager::ServicesAdded
             , [this] (PathPropertiesArray const &) {
-                qDebug() << "Services added";
+                debug::info("Some services added");
                 process_services();
             });
     connect(manager_.get(), &Manager::ServicesRemoved
             , [this] (const QList<QDBusObjectPath> &data) {
-                qDebug() << "Services removed";
+                debug::info("Some services removed");
                 auto services = QSet<QDBusObjectPath>::fromList(data);
                 if (services.contains(QDBusObjectPath(current_service_))) {
                     process_services();
