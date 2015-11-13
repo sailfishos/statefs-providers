@@ -127,16 +127,6 @@ void ModemManager::init()
         if (!modems.size())
             return;
 
-        using namespace std::placeholders;
-        connect(manager_.get(), &Manager::ModemAdded
-                , [this](QDBusObjectPath const &n, QVariantMap const&p) {
-                    emit modem_added(n.path(), p);
-                });
-        connect(manager_.get(), &Manager::ModemRemoved
-                , [this](QDBusObjectPath const &n) {
-                    emit modem_removed(n.path());
-                });
-
         for (auto it = modems.begin(); it != modems.end(); ++it) {
             auto const &info = *it;
             auto path = std::get<0>(info).path();
@@ -147,6 +137,16 @@ void ModemManager::init()
 
     auto connect_manager = [this, process_modems]() {
         manager_.reset(new Manager(service_name, "/", bus_));
+        using namespace std::placeholders;
+        connect(manager_.get(), &Manager::ModemAdded
+                , [this](QDBusObjectPath const &n, QVariantMap const&p) {
+                    emit modem_added(n.path(), p);
+                });
+        connect(manager_.get(), &Manager::ModemRemoved
+                , [this](QDBusObjectPath const &n) {
+                    emit modem_removed(n.path());
+                });
+
         async(this, manager_->GetModems(), process_modems);
     };
 
