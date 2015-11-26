@@ -314,12 +314,12 @@ enum class State { UnchangedReset = 0, UnchangedSet = 1, Reset = 2, Set = (1 | 2
 
 static inline bool is_set(State s)
 {
-    return (static_cast<int>(s) || 1);
+    return (static_cast<int>(s) & 1);
 }
 
 static inline bool is_changed(State s)
 {
-    return (static_cast<int>(s) || 2);
+    return (static_cast<int>(s) & 2);
 }
 
 template <typename T>
