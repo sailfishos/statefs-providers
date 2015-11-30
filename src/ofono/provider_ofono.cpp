@@ -776,8 +776,11 @@ bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
             , [update](QString const &n, QDBusVariant const &v) {
                 update(n, v.variant());
             });
-    for (auto it = props.begin(); it != props.end(); ++it)
-        update(it.key(), it.value());
+    auto process_properties = [this, update](QVariantMap const &properties) {
+        for (auto it = properties.begin(); it != properties.end(); ++it)
+            update(it.key(), it.value());
+    };
+    async(this, modem_->GetProperties(), process_properties);
 
     updateProperty(Property::ModemPath, path);
 
