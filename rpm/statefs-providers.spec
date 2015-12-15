@@ -15,9 +15,9 @@ Summary: Statefs providers
 Name: statefs-providers
 Version: x.x.x
 Release: 1
-License: LGPLv2
+License: LGPLv2.1 and LGPLv2.1+
 Group: System/Libraries
-URL: http://github.com/nemomobile/statefs-providers
+URL: https://git.merproject.org/mer-core/statefs-providers
 Source0: %{name}-%{version}.tar.bz2
 Source1: generate-spec.py
 Source2: inout-install.spec.tpl
