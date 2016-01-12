@@ -24,6 +24,8 @@
  * http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
  */
 
+#include <QTimer>
+
 #include "provider_ofono.hpp"
 #include "qdbusxml2cpp_dbus_types.hpp"
 #include <qtaround/dbus.hpp>
@@ -518,6 +520,8 @@ const Bridge::property_map_type Bridge::connman_property_actions_ = {
     , { "Attached", direct_update(Property::GPRSAttached) }
 };
 
+int Bridge::active_bridges_ = 0;
+
 Bridge::Bridge(MainNs *ns, QDBusConnection &bus, ModemManager *manager, const QRegularExpression &modem_pattern)
     : PropertiesSource(ns)
     , bus_(bus)
@@ -534,6 +538,12 @@ Bridge::Bridge(MainNs *ns, QDBusConnection &bus, ModemManager *manager, const QR
 
 void Bridge::reset()
 {
+    QTimer::singleShot(0, this, SLOT(update_capabilities()));
+
+    if (!modem_path_.isEmpty()) {
+        active_bridges_--;
+        modem_path_.clear();
+    }
     network_.reset();
     operator_.reset();
     stk_.reset();
@@ -631,13 +641,16 @@ void Bridge::reset_props()
 {
     static const auto status = Status::Disabled;
     set_status(status);
-    static_cast<MainNs*>(target_)->resetProperties(status, sim_present_);
+    static_cast<MainNs*>(target_)->resetProperties(status, sim_present_, active_bridges_ > 0);
 }
 
 void Bridge::reset_modem(const QString &path)
 {
+    QTimer::singleShot(0, this, SLOT(update_capabilities()));
+
     if (path.isEmpty() || path == modem_path_) {
         qDebug() << "Reset modem properties" << path;
+        active_bridges_--;
         modem_path_ = "";
         modem_.reset();
         reset_connectionManager();
@@ -725,20 +738,17 @@ void Bridge::process_interfaces(QStringList const &v)
     else if (cm_state == State::Reset)
         reset_connectionManager();
 
-    auto data_state = state(Interface::ConnectionManager);
-    updateProperty(Property::CapabilityData, is_set(data_state));
-
     auto calls_state = state(Interface::VoiceCallManager);
     if (calls_state == State::Set)
         setup_callManager(modem_path_);
     else if (calls_state == State::Reset)
         reset_callManager();
-
-    updateProperty(Property::CapabilityVoice, is_set(calls_state));
 }
 
 bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
 {
+    QTimer::singleShot(0, this, SLOT(update_capabilities()));
+
     if (!modem_path_.isEmpty()) {
         // Already handling a different modem.
         return false;
@@ -771,6 +781,7 @@ bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
 
     modem_.reset(new Modem(service_name, path, bus_));
     modem_path_ = path;
+    active_bridges_++;
 
     connect(modem_.get(), &Modem::PropertyChanged
             , [update](QString const &n, QDBusVariant const &v) {
@@ -806,6 +817,13 @@ void Bridge::set_sim_presence(SimPresent v)
     }
 }
 
+void Bridge::update_capabilities()
+{
+    // data and voice capabilities become true if there's any modem tracked.
+    // as of now assuming that all modems support both features.
+    updateProperty(Property::CapabilityData, active_bridges_ > 0);
+    updateProperty(Property::CapabilityVoice, active_bridges_ > 0);
+}
 
 bool Bridge::setup_operator(QString const &path, QVariantMap const &props)
 {
@@ -1054,12 +1072,14 @@ void Bridge::setup_callManager(QString const &path)
     async(this, callManager_->GetCalls(), process_calls);
 }
 
-void MainNs::resetProperties(Bridge::Status status, SimPresent sim)
+void MainNs::resetProperties(Bridge::Status status, SimPresent sim, bool voice_and_data)
 {
     qDebug() << "Reset properties";
     setProperties(defaults_);
     updateProperty(Property::RegistrationStatus, Bridge::ckit_status(status, sim));
     updateProperty(Property::Sim, sim_presence_name(sim));
+    updateProperty(Property::CapabilityVoice, voice_and_data);
+    updateProperty(Property::CapabilityData, voice_and_data);
 }
 
 // TODO 2 contexkit properties are not supported yet:
