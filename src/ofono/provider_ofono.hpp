@@ -170,6 +170,9 @@ public:
         PropertiesSource::updateProperty(name(id), std::forward<T>(value));
     }
 
+public slots:
+    void update_capabilities();
+
 private:
 
     bool setup_modem(QString const &, QVariantMap const&);
@@ -217,6 +220,8 @@ private:
     static const property_map_type net_property_actions_;
     static const property_map_type operator_property_actions_;
     static const property_map_type connman_property_actions_;
+
+    static int active_bridges_;
 };
 
 using statefs::qt::Namespace;
@@ -234,7 +239,7 @@ public:
 
 private:
     friend class Bridge;
-    void resetProperties(Bridge::Status, SimPresent);
+    void resetProperties(Bridge::Status, SimPresent, bool);
 
     statefs::qt::DefaultProperties defaults_;
 };
