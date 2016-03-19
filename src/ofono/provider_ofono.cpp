@@ -1052,7 +1052,7 @@ void Bridge::setup_callManager(QString const &path)
     auto process_calls = [this](PathPropertiesArray const &calls) {
         for (auto it = calls.begin(); it != calls.end(); ++it)
             calls_.insert(std::get<0>(*it).path());
-        updateProperty(Property::CallCount, calls_.size());
+        updateProperty(Property::CallCount, QVariant::fromValue(calls_.size()));
     };
 
     callManager_.reset(new VoiceCallManager(service_name, path, bus_));
@@ -1060,13 +1060,13 @@ void Bridge::setup_callManager(QString const &path)
     connect(callManager_.get(), &VoiceCallManager::CallAdded
             , [this](QDBusObjectPath const &n, QVariantMap const &) {
                     calls_.insert(n.path());
-                    updateProperty(Property::CallCount, calls_.size());
+                    updateProperty(Property::CallCount,  QVariant::fromValue(calls_.size()));
             });
 
     connect(callManager_.get(), &VoiceCallManager::CallRemoved
             , [this](QDBusObjectPath const &n) {
                     calls_.erase(n.path());
-                    updateProperty(Property::CallCount, calls_.size());
+                    updateProperty(Property::CallCount,  QVariant::fromValue(calls_.size()));
             });
 
     async(this, callManager_->GetCalls(), process_calls);
