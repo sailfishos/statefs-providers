@@ -19,7 +19,8 @@ set(CALL_IF org.ofono.voicecallmanager.xml)
 set(STK_IF org.ofono.simtoolkit.xml)
 set(CONMGR_IF org.ofono.connectionmanager.xml)
 set(CONCXT_IF org.ofono.connectioncontext.xml)
-set(ALL_IF ${MGR_IF} ${NET_IF} ${SIM_IF} ${CALL_IF} ${CONMGR_IF} ${CONCXT_IF})
+set(EXT_SIM_IF org.nemomobile.ofono.SimInfo.xml)
+set(ALL_IF ${MGR_IF} ${NET_IF} ${SIM_IF} ${CALL_IF} ${CONMGR_IF} ${CONCXT_IF} ${EXT_SIM_IF})
 set_source_files_properties(${ALL_IF}
   PROPERTIES INCLUDE qdbusxml2cpp_dbus_types.hpp
   )
@@ -34,6 +35,7 @@ qt5_add_dbus_interface(SRC ${CALL_IF} qdbusxml2cpp_call_interface)
 qt5_add_dbus_interface(SRC ${STK_IF} qdbusxml2cpp_stk_interface)
 qt5_add_dbus_interface(SRC ${CONMGR_IF} qdbusxml2cpp_connectionmanager_interface)
 qt5_add_dbus_interface(SRC ${CONCXT_IF} qdbusxml2cpp_connectioncontext_interface)
+qt5_add_dbus_interface(SRC ${EXT_SIM_IF} qdbusxml2cpp_ext_sim_interface)
 # qt5_wrap_cpp(STATEFS_QT_SRC ${STATEFS_QT_HEADERS})
 
 add_library(provider-${SELF} SHARED

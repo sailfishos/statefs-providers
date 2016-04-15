@@ -14,6 +14,7 @@
 #include "qdbusxml2cpp_stk_interface.h"
 #include "qdbusxml2cpp_connectionmanager_interface.h"
 #include "qdbusxml2cpp_connectioncontext_interface.h"
+#include "qdbusxml2cpp_ext_sim_interface.h"
 
 #include <statefs/provider.hpp>
 #include <statefs/property.hpp>
@@ -41,6 +42,7 @@ typedef OrgOfonoVoiceCallManagerInterface VoiceCallManager;
 typedef OrgOfonoSimToolkitInterface SimToolkit;
 typedef OrgOfonoConnectionManagerInterface ConnectionManager;
 typedef OrgOfonoConnectionContextInterface ConnectionContext;
+typedef OrgNemomobileOfonoSimInfoInterface ExtSimInfo;
 
 using qtaround::dbus::ServiceWatch;
 
@@ -90,7 +92,8 @@ enum class Interface {
     SupplementaryServices,
     TextTelephony,
     VoiceCallManager,
-    Last_ = VoiceCallManager
+    ExtSimInfo,
+    Last_ = ExtSimInfo
 };
 
 enum class SimPresent { Unknown, No, Yes, Last_ = Yes };
@@ -119,7 +122,10 @@ enum class Property {
     CapabilityData,
     CallCount,
     ModemPath,
-    Last_ = ModemPath
+    ServiceProviderName,
+    CachedCardIdentifier,
+    CachedSubscriberIdentity,
+    Last_ = CachedSubscriberIdentity
 };
 
 struct ConnectionCache
@@ -182,6 +188,7 @@ private:
     void setup_network(QString const &);
     void setup_stk(QString const &);
     void setup_connectionManager(QString const &);
+    void setup_simInfo(QString const &);
     void reset();
     void reset_sim();
     void reset_callManager();
@@ -189,6 +196,7 @@ private:
     void reset_modem(const QString &path);
     void reset_stk();
     void reset_connectionManager();
+    void reset_simInfo();
     void reset_props();
     void process_interfaces(QStringList const&);
     void enumerate_operators();
@@ -204,6 +212,7 @@ private:
     std::unique_ptr<SimToolkit> stk_;
     std::unique_ptr<ConnectionManager> connectionManager_;
     std::map<QString,ConnectionCache> connectionContexts_;
+    std::unique_ptr<ExtSimInfo> simInfo_;
     std::set<QString> calls_;
 
     SimPresent sim_present_;

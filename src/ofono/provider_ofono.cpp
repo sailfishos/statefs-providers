@@ -91,7 +91,8 @@ static const char *interface_names[] = {
     "SimToolkit",
     "SupplementaryServices",
     "TextTelephony",
-    "VoiceCallManager"
+    "VoiceCallManager",
+    "ExtSimInfo"
 };
 
 static_assert(sizeof(interface_names)/sizeof(interface_names[0])
@@ -187,22 +188,29 @@ static const std::map<QString, Interface> interface_ids = {
     MK_IFACE_ID(SimToolkit),
     MK_IFACE_ID(SupplementaryServices),
     MK_IFACE_ID(TextTelephony),
-    MK_IFACE_ID(VoiceCallManager)
+    MK_IFACE_ID(VoiceCallManager),
+    MK_IFACE_ID(ExtSimInfo)
 };
 
 static interfaces_set_type get_interfaces(QStringList const &from)
 {
     static const QString std_prefix = "org.ofono.";
-    static const auto prefix_len = std_prefix.length();
+    static const auto std_prefix_len = std_prefix.length();
+
+    static const QString ext_prefix = "org.nemomobile.ofono.";
+    static const auto ext_prefix_len = ext_prefix.length();
 
     interfaces_set_type res;
     for (auto const &v : from) {
-        if (v.left(prefix_len) != std_prefix)
-            continue;
-
-        auto p = interface_ids.find(v.mid(prefix_len));
-        if (p != interface_ids.end())
-            res.set((size_t)p->second);
+        if (v.leftRef(ext_prefix_len) == ext_prefix) {
+            auto p = interface_ids.find(v.mid(ext_prefix_len).prepend(QStringLiteral("Ext")));
+            if (p != interface_ids.end())
+                res.set((size_t)p->second);
+        } else if (v.leftRef(std_prefix_len) == std_prefix) {
+            auto p = interface_ids.find(v.mid(std_prefix_len));
+            if (p != interface_ids.end())
+                res.set((size_t)p->second);
+        }
     }
     return res;
 }
@@ -263,6 +271,12 @@ static interfaces_set_type get_interfaces(QStringList const &from)
  * - CallCount (integer)
  *
  * - ModemPath (string)
+ *
+ * - ServiceProviderName (string)
+ *
+ * - CachedCardIdentifier (string)
+ *
+ * - CachedSubscriberIdentity (string)
  */
 static constexpr const char *property_names[] = {
     "SignalStrength",
@@ -287,7 +301,10 @@ static constexpr const char *property_names[] = {
     "CapabilityVoice",
     "CapabilityData",
     "CallCount",
-    "ModemPath"
+    "ModemPath",
+    "ServiceProviderName",
+    "CachedCardIdentifier",
+    "CachedSubscriberIdentity"
 };
 
 static_assert(sizeof(property_names)/sizeof(property_names[0])
@@ -520,6 +537,12 @@ const Bridge::property_map_type Bridge::connman_property_actions_ = {
     , { "Attached", direct_update(Property::GPRSAttached) }
 };
 
+static const std::map<QString, Property> ext_sim_props_map_ = {
+    { "spn", Property::ServiceProviderName }
+    , { "iccid", Property::CachedCardIdentifier }
+    , { "imsi", Property::CachedSubscriberIdentity }
+};
+
 int Bridge::active_bridges_ = 0;
 
 Bridge::Bridge(MainNs *ns, QDBusConnection &bus, ModemManager *manager, const QRegularExpression &modem_pattern)
@@ -553,6 +576,7 @@ void Bridge::reset()
     calls_.clear();
     modem_.reset();
     interfaces_.reset();
+    simInfo_.reset();
     reset_props();
 }
 
@@ -676,6 +700,16 @@ void Bridge::reset_callManager()
     updateProperty(Property::CallCount, 0);
 }
 
+void Bridge::reset_simInfo()
+{
+    qDebug() << "Reset ExtSimInfo properties";
+    simInfo_.reset();
+    interfaces_.reset((size_t)Interface::ExtSimInfo);
+    updateProperty(Property::ServiceProviderName , "");
+    updateProperty(Property::CachedCardIdentifier , "");
+    updateProperty(Property::CachedSubscriberIdentity , "");
+}
+
 void Bridge::reset_network()
 {
     qDebug() << "Reset cellular network properties";
@@ -743,6 +777,12 @@ void Bridge::process_interfaces(QStringList const &v)
         setup_callManager(modem_path_);
     else if (calls_state == State::Reset)
         reset_callManager();
+
+    auto simInfo_state = state(Interface::ExtSimInfo);
+    if (simInfo_state == State::Set)
+        setup_simInfo(modem_path_);
+    else if (simInfo_state == State::Reset)
+        reset_simInfo();
 }
 
 bool Bridge::setup_modem(QString const &path, QVariantMap const &props)
@@ -1072,6 +1112,42 @@ void Bridge::setup_callManager(QString const &path)
     async(this, callManager_->GetCalls(), process_calls);
 }
 
+void Bridge::setup_simInfo(QString const &path)
+{
+    qDebug() << "Setup ExtSimInfo";
+
+    auto update = [this](QString const &n, QVariant const &v) {
+        DBG() << "ExtSim prop: " << n << "=" << v;
+        auto it = ext_sim_props_map_.find(n);
+        if (it != ext_sim_props_map_.end())
+            updateProperty(it->second, v);
+    };
+
+    simInfo_.reset(new ExtSimInfo(service_name, path, bus_));
+    connect(simInfo_.get(), &ExtSimInfo::ServiceProviderNameChanged
+            , [update](QString const &spn) {
+                update("spn", spn);
+            });
+    connect(simInfo_.get(), &ExtSimInfo::CardIdentifierChanged
+            , [update](QString const &iccid) {
+                update("iccid", iccid);
+            });
+    connect(simInfo_.get(), &ExtSimInfo::SubscriberIdentityChanged
+            , [update](QString const &imsi) {
+                update("imsi", imsi);
+            });
+
+    async(this, simInfo_->GetServiceProviderName(), [update](QString const &spn) {
+        update("spn", spn);
+    });
+    async(this, simInfo_->GetCardIdentifier(), [update](QString const &iccid) {
+        update("iccid", iccid);
+    });
+    async(this, simInfo_->GetSubscriberIdentity(), [update](QString const &imsi) {
+        update("imsi", imsi);
+    });
+}
+
 void MainNs::resetProperties(Bridge::Status status, SimPresent sim, bool voice_and_data)
 {
     qDebug() << "Reset properties";
@@ -1113,6 +1189,9 @@ MainNs::MainNs(QDBusConnection &bus, const char *name, ModemManager *manager, co
                 , PROP_(CapabilityData, "0")
                 , PROP_(CallCount, "0")
                 , PROP_(ModemPath, "")
+                , PROP_(ServiceProviderName, "")
+                , PROP_(CachedCardIdentifier, "")
+                , PROP_(CachedSubscriberIdentity, "")
         })
 {
     // contextkit prop
