@@ -26,7 +26,10 @@
 #include <iostream>
 #include <functional>
 #include <cor/util.hpp>
-#include <qtaround/dbus.hpp>
+
+#include <initmanagerjob.h>
+
+#include <QDebug>
 
 namespace statefs { namespace bluez {
 
@@ -34,7 +37,6 @@ using statefs::qt::Namespace;
 using statefs::qt::PropertiesSource;
 using statefs::qt::make_proper_source;
 using qtaround::dbus::async;
-
 
 static char const *service_name = "org.bluez";
 
@@ -48,13 +50,17 @@ Bridge::Bridge(BlueZ *ns, QDBusConnection &bus)
 void Bridge::init()
 {
     auto setup_manager = [this]() {
-        manager_.reset(new Manager(service_name, "/", bus_));
-        connect(manager_.get(), &Manager::DefaultAdapterChanged
-                , this, &Bridge::defaultAdapterChanged);
-
-        async(this, manager_->DefaultAdapter()
-              , std::bind(&Bridge::defaultAdapterChanged, this
-                          , std::placeholders::_1));
+        manager_.reset(new BluezQt::Manager);
+        connect(manager_.get(), &BluezQt::Manager::usableAdapterChanged
+                , this, &Bridge::usableAdapterChanged);
+        BluezQt::InitManagerJob *job = manager_->init();
+        job->start();
+        connect(job, &BluezQt::InitManagerJob::result
+                , [this](BluezQt::InitManagerJob *j) {
+                    if (j->error()) {
+                        qWarning() << "BluezQt::Manager::init() error:" << j->errorText();
+                    }
+                });
     };
     auto reset_manager = [this]() {
         manager_.reset();
@@ -64,77 +70,65 @@ void Bridge::init()
     setup_manager();
 }
 
-void Bridge::defaultAdapterChanged(const QDBusObjectPath &v)
+void Bridge::usableAdapterChanged(BluezQt::AdapterPtr adapter)
 {
-    qDebug() << "New default bluetooth adapter" << v.path();
-    defaultAdapter_ = v;
+    qDebug() << "Found default bluetooth adapter" << adapter->ubi();
 
-    adapter_.reset(new Adapter(service_name, v.path(), bus_));
+    adapter_ = adapter;
 
-    connect(adapter_.get(), &Adapter::PropertyChanged
-            , [this](const QString &name, const QDBusVariant &value) {
-                updateProperty(name, value.variant());
+    connect(adapter_.data(), &BluezQt::Adapter::poweredChanged
+            , [this](bool powered) {
+                updateProperty("Powered", powered);
             });
-    connect(adapter_.get(), &Adapter::DeviceRemoved
-            , [this](const QDBusObjectPath &path) {
-                removeDevice(path);
+    connect(adapter_.data(), &BluezQt::Adapter::discoverableChanged
+            , [this](bool discoverable) {
+                updateProperty("Discoverable", discoverable);
             });
-    connect(adapter_.get(), &Adapter::DeviceCreated
-            , [this](const QDBusObjectPath &path) {
-                addDevice(path);
-            });
+    connect(adapter_.data(), &BluezQt::Adapter::deviceRemoved
+            , this, &Bridge::removeDevice);
+    connect(adapter_.data(), &BluezQt::Adapter::deviceAdded
+            , this, &Bridge::addDevice);
 
-    async(this, adapter_->GetProperties(),
-          [this](QVariantMap const &v) {
-              setProperties(v);
-          });
+    updateProperty("Address", adapter->address());
+    updateProperty("Powered", adapter->isPowered());
+    updateProperty("Discoverable", adapter->isDiscoverable());
 
-    async(this, adapter_->ListDevices()
-          , [this](const QList<QDBusObjectPath> &devs) {
-              foreach(QDBusObjectPath dev, devs) {
-                  addDevice(dev);
-              }
-          });
+    foreach (BluezQt::DevicePtr device, adapter->devices()) {
+        addDevice(device);
+    }
 }
 
-void Bridge::addDevice(const QDBusObjectPath &v)
+void Bridge::addDevice(BluezQt::DevicePtr device)
 {
-    removeDevice(v);
+    removeDevice(device);
 
-    auto device = cor::make_unique<Device>(service_name, v.path(), bus_);
+    QDBusObjectPath deviceId(device->ubi());
 
-    connect(device.get(), &Device::PropertyChanged
-        , [this,v](const QString &name, const QDBusVariant &value) {
-            if (name == QLatin1String("Connected")) {
-                if (value.variant().toBool())
-                    connected_.insert(v);
-                else
-                    connected_.erase(v);
-                updateProperty("Connected", connected_.size() > 0);
+    connect(device.data(), &BluezQt::Device::connectedChanged
+        , [this,deviceId](bool connected) {
+            if (connected) {
+                connected_.insert(deviceId);
+            } else {
+                connected_.erase(deviceId);
             }
+            updateProperty("Connected", connected_.size() > 0);
         });
 
-    async(this, device.get()->GetProperties()
-         , [this,v](const QVariantMap &props) {
-            QVariantMap::const_iterator it = props.find("Connected");
-            if (it != props.end()) {
-                if (it.value().toBool())
-                    connected_.insert(v);
-                else
-                    connected_.erase(v);
-                updateProperty("Connected", connected_.size() > 0);
-            }
-         });
+    if (device->isConnected()) {
+        connected_.insert(deviceId);
+    } else {
+        connected_.erase(deviceId);
+    }
 
-    devices_.insert(std::make_pair(v, std::move(device)));
+    devices_.insert(std::make_pair(deviceId, std::move(device)));
 }
 
-void Bridge::removeDevice(const QDBusObjectPath &v)
+void Bridge::removeDevice(BluezQt::DevicePtr device)
 {
-    auto it = devices_.find(v);
+    auto it = devices_.find(QDBusObjectPath(device->ubi()));
     if (it != devices_.end())
         devices_.erase(it);
-    if (connected_.erase(v))
+    if (connected_.erase(QDBusObjectPath(device->ubi())))
         updateProperty("Connected", connected_.size() > 0);
 }
 
@@ -186,7 +180,6 @@ static inline Provider *init_provider(statefs_server *server)
 {
     if (provider)
         throw std::logic_error("provider ptr is already set");
-    registerDataTypes();
     provider = new Provider(server);
     return provider;
 }

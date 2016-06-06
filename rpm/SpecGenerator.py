@@ -78,7 +78,7 @@ Provides: statefs-provider-upower = 0.2.66.1
 '''
 
 templates.decl_bluez = '''
-Requires: bluez-libs >= 4.0
+BuildRequires: pkgconfig(KF5BluezQt)
 '''
 
 templates.decl_bme = '''

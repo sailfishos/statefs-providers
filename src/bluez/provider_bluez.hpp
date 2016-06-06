@@ -1,22 +1,22 @@
 #ifndef _STATEFS_PRIVATE_BLUEZ_HPP_
 #define _STATEFS_PRIVATE_BLUEZ_HPP_
 
-#include "qdbusxml2cpp_manager_interface.h"
-#include "qdbusxml2cpp_adapter_interface.h"
-#include "qdbusxml2cpp_device_interface.h"
-
 #include <statefs/provider.hpp>
 #include <statefs/property.hpp>
 #include <statefs/qt/ns.hpp>
 #include <set>
 
+#include <qtaround/dbus.hpp>
+
+// BluezQt
+#include <manager.h>
+#include <adapter.h>
+#include <device.h>
+
+#include <QtDBus>
 #include <QObject>
 
 namespace statefs { namespace bluez {
-
-typedef OrgBluezManagerInterface Manager;
-typedef OrgBluezAdapterInterface Adapter;
-typedef OrgBluezDeviceInterface Device;
 
 using qtaround::dbus::ServiceWatch;
 
@@ -34,17 +34,15 @@ public:
     virtual void init();
 
 private slots:
-    void defaultAdapterChanged(const QDBusObjectPath &);
-    void addDevice(const QDBusObjectPath &v);
-    void removeDevice(const QDBusObjectPath &v);
+    void usableAdapterChanged(BluezQt::AdapterPtr adapter);
+    void addDevice(BluezQt::DevicePtr device);
+    void removeDevice(BluezQt::DevicePtr device);
 
 private:
-
     QDBusConnection &bus_;
-    QDBusObjectPath defaultAdapter_;
-    std::unique_ptr<Manager> manager_;
-    std::unique_ptr<Adapter> adapter_;
-    std::map<QDBusObjectPath,std::unique_ptr<Device> > devices_;
+    std::unique_ptr<BluezQt::Manager> manager_;
+    BluezQt::AdapterPtr adapter_;
+    std::map<QDBusObjectPath, BluezQt::DevicePtr> devices_;
     std::set<QDBusObjectPath> connected_;
     ServiceWatch watch_;
 };
