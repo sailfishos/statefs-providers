@@ -109,7 +109,8 @@ Requires(post): /sbin/ldconfig
 Requires(postun): /sbin/ldconfig
 Requires: %{n_common} = %{version}-%{release}
 Requires: statefs-loader-qt5 >= 0.0.9
-Requires: bluez-libs >= 4.0
+BuildRequires: pkgconfig(KF5BluezQt)
+Requires: kf5bluezqt
 Obsoletes: contextkit-meego-bluetooth <= %{meego_ver}
 Provides: contextkit-meego-bluetooth = %{meego_ver1}
 Obsoletes: contextkit-plugin-bluez <= %{ckit_version}
