@@ -350,6 +350,7 @@ public:
         , calculate_energy_(&BatteryInfo::calculate_energy_current)
         , get_energy_now_(&BatteryInfo::get_energy_now_from_capacity_)
         , current_sign_(1)
+        , battery_full_reached_(false)
     {
         calculate_power_limits();
     }
@@ -398,6 +399,9 @@ public:
         return energy_full_;
     }
 
+    bool battery_full_reached() const;
+    void set_battery_full_reached(bool reached);
+
 private:
 
     void calculate_power_limits();
@@ -435,6 +439,7 @@ private:
     void (BatteryInfo::*calculate_energy_)(void);
     long (BatteryInfo::*get_energy_now_)(void);
     long current_sign_;
+    bool battery_full_reached_;
 };
 
 struct ChargerInfo
@@ -830,18 +835,41 @@ void ChargingInfo::update_online_status()
 
 void ChargingInfo::calculate(BatteryInfo &battery, bool is_recalculate)
 {
-    if (battery.status.changed() || is_recalculate) {
-        auto s = battery.status.last();
-        log.debug("Battery status changed: ", s);
-        state.set(s == "Charging"
-                  ? ChargingState::Charging
-                  : (s == "Discharging"
-                     ? ChargingState::Discharging
-                     : (s == "Full"
-                        ? ChargingState::Idle
-                        : (s == "Not charging"
-                           ? ChargingState::Discharging
-                           : ChargingState::Unknown))));
+    if (!is_recalculate) {
+        is_recalculate = (is_online.changed() ||
+                          battery.status.changed() ||
+                          battery.capacity.changed());
+    }
+
+    if (is_recalculate) {
+        ChargingState chargingState = ChargingState::Unknown;
+
+        auto can_charge   = is_online.last();
+        auto status       = battery.status.last();
+        auto percent      = battery.capacity.last();
+        bool full_reached = battery.battery_full_reached();
+        bool maintenance  = can_charge && full_reached && percent >= 96;
+
+        if (status == "Charging") {
+            if (maintenance)
+                chargingState = ChargingState::Idle;
+            else
+                chargingState = ChargingState::Charging;
+        } else if (status == "Discharging") {
+            if (maintenance)
+                chargingState = ChargingState::Idle;
+            else
+                chargingState = ChargingState::Discharging;
+        } else if (status == "Full") {
+            chargingState = ChargingState::Idle;
+        } else if (status == "Not charging") {
+            chargingState = ChargingState::Discharging;
+        }
+
+        full_reached = (chargingState == ChargingState::Idle);
+        battery.set_battery_full_reached(full_reached);
+
+        state.set(chargingState);
         battery.on_charging_changed(state.last());
     }
 }
@@ -940,6 +968,17 @@ void BatteryInfo::set_energy(long v)
     if (energy_now.changed())
         last_energy_change_time.set(::time(nullptr));
 }
+
+bool BatteryInfo::battery_full_reached() const
+{
+    return battery_full_reached_;
+}
+
+void BatteryInfo::set_battery_full_reached(bool reached)
+{
+    battery_full_reached_ = reached;
+}
+
 
 void BatteryInfo::calculate_power_limits()
 {
