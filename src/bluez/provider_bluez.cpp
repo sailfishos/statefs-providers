@@ -72,9 +72,16 @@ void Bridge::init()
 
 void Bridge::usableAdapterChanged(BluezQt::AdapterPtr adapter)
 {
-    qDebug() << "Found default bluetooth adapter" << adapter->ubi();
-
     adapter_ = adapter;
+
+    if (adapter.isNull()) {
+        static_cast<BlueZ*>(target_)->reset_properties();
+        devices_.clear();
+        connected_.clear();
+        return;
+    }
+
+    qDebug() << "Found default bluetooth adapter" << adapter->ubi();
 
     connect(adapter_.data(), &BluezQt::Adapter::poweredChanged
             , [this](bool powered) {
