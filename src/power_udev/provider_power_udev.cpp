@@ -263,13 +263,13 @@ static char const * get_chg_state_name(ChargingState v)
 }
 
 enum class ChargerType {
-    First_ = 0, Absent = First_, DCP, CDP, USB, Mains, Unknown, Last_ = Unknown
+    First_ = 0, Absent = First_, DCP, HVDCP, CDP, USB, Mains, Unknown, Last_ = Unknown
 };
 
 static char const * get_chg_type_name(ChargerType t)
 {
     static char const * names[] = {
-        "", "dcp", "cdp", "usb", "dcp", "unknown"
+        "", "dcp", "hvdcp", "cdp", "usb", "dcp", "unknown"
     };
     static_assert(sizeof(names)/sizeof(names[0])
                   == cor::enum_size<ChargerType>()
@@ -279,6 +279,8 @@ static char const * get_chg_type_name(ChargerType t)
 
 static const std::map<std::string, ChargerType> charger_types = {
     {"USB_DCP", ChargerType::DCP},
+    {"USB_HVDCP", ChargerType::HVDCP},
+    {"USB_HVDCP_3", ChargerType::HVDCP},
     {"USB", ChargerType::USB},
     {"Mains", ChargerType::Mains},
     {"CDP", ChargerType::CDP},
@@ -570,7 +572,7 @@ public:
      *
      * - Current (uA) - battery current (positive - charging)
      *
-     * - ChargerType (string) [usb, dcp, cdp, unknown] - charger type
+     * - ChargerType (string) [usb, dcp, hvdcp, cdp, unknown] - charger type
      *   ("" - if absent)
      *
      * - Level - (string) [unknown, normal, low, empty] - battery level
