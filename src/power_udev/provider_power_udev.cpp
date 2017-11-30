@@ -1327,9 +1327,11 @@ void Monitor::notify(bool is_initial)
     {
         return s == ChargingState::Charging;
     };
-    auto get_on_battery = [](ChargerType t)
+    auto get_on_battery = [](ChargingState s)
     {
-        return (t == ChargerType::Absent || t == ChargerType::Unknown);
+        // neither in charging nor in mainenance mode
+        return (s != ChargingState::Charging &&
+                s != ChargingState::Idle);
     };
 
     auto set_state = [this](BatteryLevel bat_level
@@ -1374,7 +1376,7 @@ void Monitor::notify(bool is_initial)
         set<P::ChargePercentage>(battery_.capacity, is_initial);
     set<P::Energy>(battery_.energy_now, is_initial);
     set_battery_prop<P::EnergyFull>(battery_.energy_full());
-    set<P::OnBattery>(charging_.charger_type, get_on_battery, is_initial);
+    set<P::OnBattery>(charging_.state, get_on_battery, is_initial);
     set<P::TimeUntilLow>(battery_.time_to_low, is_initial);
     set<P::TimeUntilFull>(battery_.time_to_full, is_initial);
     set<P::Temperature>(battery_.temperature, is_initial);
