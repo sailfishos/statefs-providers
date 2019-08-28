@@ -4,7 +4,9 @@
  *
  * Uses udev as source
  *
- * @copyright (C) 2015 Jolla Ltd.
+ * Copyright (C) 2015-2019 Jolla Ltd.
+ * Copyright (c) 2019 Open Mobile Platform LLC.
+ *
  * @par License: LGPL 2.1 http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
  */
 
@@ -447,7 +449,7 @@ private:
 struct ChargerInfo
 {
     ChargerInfo(udevpp::Device const &dev)
-        : type(charger_type(attr(dev.attr("type"))))
+        : type(charger_type(attr(dev.attr("real_type") ?: dev.attr("type"))))
         , state([&dev]() {
                 auto v = attr(dev.attr("online"), -13);
                 return (v == 0
@@ -1306,7 +1308,7 @@ void Monitor::after_enumeration()
 
 void Monitor::on_device(udevpp::Device &&dev)
 {
-    auto t = attr(dev.attr("type"));
+    auto t = attr(dev.attr("real_type") ?: dev.attr("type"));
     if (t == "Battery") {
         // TODO there can be several batteries including also backup battery
         battery_.update(std::move(dev));
