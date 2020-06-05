@@ -41,6 +41,8 @@ BuildRequires: pkgconfig(Qt5DBus)
 BuildRequires: pkgconfig(cor) >= 0.1.17
 BuildRequires: pkgconfig(qtaround-dbus) >= 0.2.4
 
+ExcludeArch:   aarch64
+
 %description
 %{summary}
 
